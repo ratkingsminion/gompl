@@ -16,7 +16,6 @@ const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"if", _RESERVED, r"then", _RESERVED, r"else", _RESERVED,
 	r"while", _RESERVED, r"do", _RESERVED, r"end", _RESERVED,
 	r"[0-9]+", _INT,
-	#r"(?<=\")(.*?(?<!\\))(?=\")", _STRING,
 	r"\"(.*?(?<!\\))\"", _STRING,
 	r"[A-Za-z_][A-Za-z0-9_]*", _ID
 ]
@@ -29,18 +28,6 @@ func _init() -> void:
 	phrase = Phrase.new(_stmt_list())
 
 ###
-
-func test_lexer(code: String):
-	var res := _lex(code, _TOKEN_EXPRESSIONS)
-	print(res)
-
-func test_parser(code: String) -> ParseRes:
-	#print("!Phrase: ", phrase)
-	var tokens := _lex(code, _TOKEN_EXPRESSIONS)
-	#print("!Tokens: ", tokens)
-	var res := _imp_parse(tokens)
-	#print("!ParseRes: ", res)
-	return res
 
 func eval(code: String) -> bool:
 	var tokens := _lex(code, _TOKEN_EXPRESSIONS)
