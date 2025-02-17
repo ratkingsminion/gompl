@@ -32,7 +32,7 @@ var phrase: Parser
 ###
 
 func _init() -> void:
-	phrase = Phrase.new(_stmt_list())
+	phrase = Phrase.new(_exp_list())
 
 ###
 
@@ -207,9 +207,12 @@ class Splice extends Parser:
 
 ### AST
 
-class Aexp: # Arithmetic
+class Exp:
 	func eval(_env: Dictionary):
 		return null
+
+class Aexp extends Exp: # Arithmetic
+	pass
 
 class IntAexp extends Aexp:
 	var val: int
@@ -246,9 +249,8 @@ class BinopAexp extends Aexp:
 		printerr("Unknown op ", op)
 		return null
 
-class Bexp: # Boolean
-	func eval(_env: Dictionary):
-		pass
+class Bexp extends Exp: # Boolean
+	pass
 
 class RelopBexp extends Bexp:
 	var op: String
@@ -287,42 +289,48 @@ class NotBexp extends Bexp:
 	func _to_string() -> String: return str("NotBexp(", bexp, ")")
 	func eval(env: Dictionary): return not bexp.eval(env)
 
-class Statement:
-	func eval(_env: Dictionary):
-		pass
-
-class AssignStatement extends Statement:
+class AssignExp extends Exp:
 	var name: String
-	var aexp: Aexp
-	func _init(n: String, a: Aexp) -> void: name = n; aexp = a
-	func _to_string() -> String: return str("AssignStatement(", name, ", ", aexp, ")")
-	func eval(env: Dictionary): env[name] = aexp.eval(env)
-
-class CompoundStatement extends Statement:
-	var first: Statement
-	var second: Statement
-	func _init(f: Statement, s: Statement) -> void: first = f; second = s
-	func _to_string() -> String: return str("CompoundStatement(", first, ", ", second, ")")
-	func eval(env: Dictionary): first.eval(env); second.eval(env)
-
-class IfStatement extends Statement:
-	var condition: Bexp
-	var true_stmt: Statement
-	var false_stmt: Statement
-	func _init(c: Bexp, t: Statement, f: Statement) -> void: condition = c; true_stmt = t; false_stmt = f
-	func _to_string() -> String: return str("IfStatement(", condition, ", ", true_stmt, ", ", false_stmt, ")")
+	var exp: Exp
+	func _init(n: String, e: Exp) -> void: name = n; exp = e
+	func _to_string() -> String: return str("AssignExp(", name, ", ", exp, ")")
 	func eval(env: Dictionary):
-		if condition.eval(env): true_stmt.eval(env)
-		elif false_stmt: false_stmt.eval(env)
+		var val = exp.eval(env)
+		env[name] = val
+		return val
 
-class WhileStatement extends Statement:
-	var condition: Bexp
-	var body: Statement
-	func _init(c: Bexp, b: Statement) -> void: condition = c; body = b
-	func _to_string() -> String: return str("WhileStatement(", condition, ", ", body, ")")
+class CompoundExp extends Exp:
+	var first: Exp
+	var second: Exp
+	func _init(f: Exp, s: Exp) -> void: first = f; second = s
+	func _to_string() -> String: return str("CompoundExp(", first, ", ", second, ")")
 	func eval(env: Dictionary):
+		first.eval(env)
+		return second.eval(env)
+
+class IfExp extends Exp:
+	var condition: Bexp
+	var true_exp: Exp
+	var false_exp: Exp
+	func _init(c: Bexp, t: Exp, f: Exp) -> void: condition = c; true_exp = t; false_exp = f
+	func _to_string() -> String: return str("IfExp(", condition, ", ", true_exp, ", ", false_exp, ")")
+	func eval(env: Dictionary):
+		if condition.eval(env):
+			return true_exp.eval(env)
+		elif false_exp:
+			return false_exp.eval(env)
+		return null
+
+class WhileExp extends Exp:
+	var condition: Bexp
+	var body: Exp
+	func _init(c: Bexp, b: Exp) -> void: condition = c; body = b
+	func _to_string() -> String: return str("WhileExp(", condition, ", ", body, ")")
+	func eval(env: Dictionary):
+		var val = null
 		while condition.eval(env):
-			body.eval(env)
+			val = body.eval(env)
+		return val
 
 ### PARSER
 
@@ -390,29 +398,30 @@ func _process_logic(op: String) -> Callable:
 func _bexp() -> Parser:
 	return _precedence(_bexp_term(), _bexp_precedence_levels, _process_logic)
 
-func _assign_stmt() -> Parser:
-	var process := func(parsed) -> Statement:
-		return AssignStatement.new(parsed[0][0], parsed[1])
-	return _id.concat(_keyword("=")).concat(_aexp()).process(process)
+func _assign_exp() -> Parser:
+	var process := func(parsed) -> Exp:
+		return AssignExp.new(parsed[0][0], parsed[1])
+	#return _id.concat(_keyword("=")).concat(_aexp()).process(process)
+	return _id.concat(_keyword("=")).concat(Lazy.new(_exp)).process(process)
 
-func _stmt_list() -> Parser:
-	var separator = _keyword(";").process(func(_x): return func(l, r): return CompoundStatement.new(l, r))
-	return Splice.new(_stmt(), separator)
+func _exp_list() -> Parser:
+	var separator = _keyword(";").process(func(_x): return func(l, r): return CompoundExp.new(l, r))
+	return Splice.new(_exp(), separator)
 
-func _if_stmt() -> Parser:
-	var process := func(parsed) -> Statement:
-		# (((((_, condition), _), true_stmt), false_parsed), _) = parsed
-		var false_stmt = parsed[0][1][1] if parsed[0][1] else null
-		return IfStatement.new(parsed[0][0][0][0][1], parsed[0][0][1], false_stmt)
-	return _keyword("if").concat(_bexp()).concat(_keyword("then")).concat(Lazy.new(_stmt_list)) \
-		.concat(Opt.new(_keyword("else").concat(Lazy.new(_stmt_list)))) \
+func _if_exp() -> Parser:
+	var process := func(parsed) -> Exp:
+		# (((((_, condition), _), true_exp), false_parsed), _) = parsed
+		var false_exp = parsed[0][1][1] if parsed[0][1] else null
+		return IfExp.new(parsed[0][0][0][0][1], parsed[0][0][1], false_exp)
+	return _keyword("if").concat(_bexp()).concat(_keyword("then")).concat(Lazy.new(_exp_list)) \
+		.concat(Opt.new(_keyword("else").concat(Lazy.new(_exp_list)))) \
 		.concat(_keyword("end")).process(process)
 
-func _while_stmt() -> Parser:
-	var process := func(parsed) -> Statement:
-		return WhileStatement.new(parsed[0][0][0][1], parsed[0][1])
-	return _keyword("while").concat(_bexp()).concat(_keyword("do")).concat(Lazy.new(_stmt_list)) \
+func _while_exp() -> Parser:
+	var process := func(parsed) -> Exp:
+		return WhileExp.new(parsed[0][0][0][1], parsed[0][1])
+	return _keyword("while").concat(_bexp()).concat(_keyword("do")).concat(Lazy.new(_exp_list)) \
 		.concat(_keyword("end")).process(process)
 
-func _stmt() -> Parser:
-	return _assign_stmt().alternate(_if_stmt()).alternate(_while_stmt())
+func _exp() -> Parser:
+	return _assign_exp().alternate(_if_exp()).alternate(_while_exp()).alternate(_bexp()).alternate(_aexp())
