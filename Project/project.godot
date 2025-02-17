@@ -14,10 +14,10 @@ config/name="gimpl"
 config/description="An implementation of IMP in GDScript
 
 IMP: https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-"
+config/tags=PackedStringArray("tool")
 run/main_scene="res://test.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 config/icon="res://icon.svg"
-config/tags=PackedStringArray("tool")
 
 [rendering]
 

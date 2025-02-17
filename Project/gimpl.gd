@@ -3,10 +3,11 @@ extends RefCounted
 
 const _RESERVED := "RESERVED"
 const _INT := "INT"
+const _STRING := "STRING"
 const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"[ \n\t]+", "", r"#[^\n]*", "", # whitespaces
-	r";", _RESERVED, # TODO
+	r";", _RESERVED, # separator
 	r"\+", _RESERVED, r"-", _RESERVED, r"\*", _RESERVED, r"/", _RESERVED,
 	r"<=", _RESERVED, r"<", _RESERVED, r">=", _RESERVED, r">", _RESERVED,
 	r"==", _RESERVED, r"!=", _RESERVED,
@@ -15,6 +16,8 @@ const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"if", _RESERVED, r"then", _RESERVED, r"else", _RESERVED,
 	r"while", _RESERVED, r"do", _RESERVED, r"end", _RESERVED,
 	r"[0-9]+", _INT,
+	#r"(?<=\")(.*?(?<!\\))(?=\")", _STRING,
+	r"\"(.*?(?<!\\))\"", _STRING,
 	r"[A-Za-z_][A-Za-z0-9_]*", _ID
 ]
 
@@ -60,17 +63,17 @@ func _imp_parse(tokens: Array[Array]) -> ParseRes:
 func _lex(code: String, token_exprs: Array[String]) -> Array[Array]:
 	var pos := 0
 	var tokens: Array[Array] = []
+	var reg := RegEx.new()
 	#print(token_exprs)
 	while pos < code.length():
 		var res: RegExMatch = null
 		for tidx: int in range(0, token_exprs.size(), 2):
-			var reg := RegEx.new()
 			reg.compile(token_exprs[tidx])
 			res = reg.search(code, pos)
 			if res and res.get_start() == pos:
-				if token_exprs[tidx + 1]: # has tag
-					#print("FOUND [", token_exprs[tidx + 1], "] at ", pos, ": '", res.get_string(),"'")
-					var token: Array[String] = [ res.get_string(), token_exprs[tidx + 1] ]
+				var tag := token_exprs[tidx + 1]
+				if tag: # i.e. is not whitespace to ignore
+					var token: Array[String] = [ res.get_string(), tag ]
 					tokens.append(token)
 				break
 		if not res:
@@ -220,6 +223,12 @@ class IntAexp extends Aexp:
 	func _to_string() -> String: return str("IntAexp(", val, ")")
 	func eval(_env: Dictionary): return val
 
+class StringAexp extends Aexp:
+	var val: String
+	func _init(s: String) -> void: val = s.substr(1, s.length() - 2).c_unescape() # removing the quotation marks
+	func _to_string() -> String: return str("StringAexp(", val, ")")
+	func eval(_env: Dictionary): return val
+
 class VarAexp extends Aexp:
 	var name: String
 	func _init(n: String) -> void: name = n
@@ -242,7 +251,7 @@ class BinopAexp extends Aexp:
 		return null
 
 class Bexp: # Boolean
-	func eval(env: Dictionary):
+	func eval(_env: Dictionary):
 		pass
 
 class RelopBexp extends Bexp:
@@ -283,7 +292,7 @@ class NotBexp extends Bexp:
 	func eval(env: Dictionary): return not bexp.eval(env)
 
 class Statement:
-	func eval(env: Dictionary):
+	func eval(_env: Dictionary):
 		pass
 
 class AssignStatement extends Statement:
@@ -325,11 +334,13 @@ func _keyword(kw: String) -> Parser:
 	return Reserved.new(kw, _RESERVED)
 
 var _id := Tag.new(_ID)
-
-var _num := Tag.new(_INT).process(func(i: String) -> int: return int(i))
+var _num := Tag.new(_INT).process(func(i) -> int: return int(i))
+var _string := Tag.new(_STRING).process(func(s) -> String: return str(s))
 
 func _aexp_value() -> Parser:
-	return _num.process(func(i): return IntAexp.new(i)).alternate(_id.process(func(v): return VarAexp.new(v)))
+	return _num.process(func(i) -> Aexp: return IntAexp.new(i)) \
+		.alternate(_string.process(func(s) -> Aexp: return StringAexp.new(s))) \
+		.alternate(_id.process(func(v) -> Aexp: return VarAexp.new(v)))
 
 func _process_group(parsed):
 	return parsed[0][1]
@@ -365,7 +376,7 @@ func _process_relop(parsed) -> Bexp:
 	#((left, op), right) = parsed \\ #return RelopBexp(op, left, right)
 
 func _bexp_relop() -> Parser:
-	var relops: Array[String] = ['<', '<=', '>', '>=', '=', '!=']
+	var relops: Array[String] = ['<', '<=', '>', '>=', '==', '!=']
 	return _aexp().concat(_any_operator_in_list(relops)).concat(_aexp()).process(_process_relop)
 
 func _bexp_not() -> Parser:
