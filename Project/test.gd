@@ -14,6 +14,7 @@ func _ready() -> void:
 	
 	gimpl.eval('test = "str";
 		t = if test != "str" then 100 else 50 end;
+		r = true;
 		t - 50 > 0')
 	
 	for i in 20: await get_tree().process_frame

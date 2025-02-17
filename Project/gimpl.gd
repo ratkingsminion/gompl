@@ -7,6 +7,7 @@ extends RefCounted
 const _RESERVED := "RESERVED"
 const _INT := "INT"
 const _STRING := "STRING"
+const _BOOL := "BOOL"
 const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"[ \n\t]+", "", r"#[^\n]*", "", # whitespaces
@@ -20,6 +21,7 @@ const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"while", _RESERVED, r"do", _RESERVED, r"end", _RESERVED,
 	r"[0-9]+", _INT,
 	r"\"(.*?(?<!\\))\"", _STRING,
+	r"true", _BOOL, r"false", _BOOL,
 	r"[A-Za-z_][A-Za-z0-9_]*", _ID
 ]
 
@@ -252,6 +254,12 @@ class BinopAexp extends Aexp:
 class Bexp extends Exp: # Boolean
 	pass
 
+class BoolBexp extends Bexp:
+	var val: bool
+	func _init(b: bool) -> void: val = b
+	func _to_string() -> String: return str("BoolAexp(", val, ")")
+	func eval(_env: Dictionary): return val
+
 class RelopBexp extends Bexp:
 	var op: String
 	var left: Aexp
@@ -291,11 +299,11 @@ class NotBexp extends Bexp:
 
 class AssignExp extends Exp:
 	var name: String
-	var exp: Exp
-	func _init(n: String, e: Exp) -> void: name = n; exp = e
-	func _to_string() -> String: return str("AssignExp(", name, ", ", exp, ")")
+	var express: Exp
+	func _init(n: String, e: Exp) -> void: name = n; express = e
+	func _to_string() -> String: return str("AssignExp(", name, ", ", express, ")")
 	func eval(env: Dictionary):
-		var val = exp.eval(env)
+		var val = express.eval(env)
 		env[name] = val
 		return val
 
@@ -340,6 +348,7 @@ func _keyword(kw: String) -> Parser:
 var _id := Tag.new(_ID)
 var _num := Tag.new(_INT).process(func(i) -> int: return int(i))
 var _string := Tag.new(_STRING).process(func(s) -> String: return str(s))
+var _bool := Tag.new(_BOOL).process(func(b) -> bool: if b is String: return b == "true" else: return bool(b))
 
 func _aexp_value() -> Parser:
 	return _num.process(func(i) -> Aexp: return IntAexp.new(i)) \
@@ -383,11 +392,14 @@ func _bexp_relop() -> Parser:
 func _bexp_not() -> Parser:
 	return _keyword("not").concat(Lazy.new(_bexp_term)).process(func(parsed) -> Bexp: return NotBexp.new(parsed[1]))
 
+func _bexp_value() -> Parser:
+	return _bool.process(func(b) -> Bexp: return BoolBexp.new(b))
+	
 func _bexp_group() -> Parser:
 	return _keyword("(").concat(Lazy.new(_bexp)).concat(_keyword(")")).process(_process_group)
 
 func _bexp_term():
-	return _bexp_not().alternate(_bexp_relop()).alternate(_bexp_group())
+	return _bexp_value().alternate(_bexp_not()).alternate(_bexp_relop()).alternate(_bexp_group())
 
 func _process_logic(op: String) -> Callable:
 	if op == "and": return func(l, r) -> Bexp: return AndBexp.new(l, r)
