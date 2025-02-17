@@ -1,6 +1,9 @@
 class_name Gimpl
 extends RefCounted
 
+## A simple interpreted scripting language for Godot
+## Based on https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-
+
 const _RESERVED := "RESERVED"
 const _INT := "INT"
 const _STRING := "STRING"
@@ -19,6 +22,10 @@ const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"\"(.*?(?<!\\))\"", _STRING,
 	r"[A-Za-z_][A-Za-z0-9_]*", _ID
 ]
+
+const _aexp_precedence_levels: Array[Array] = [ ['*', '/'], ['+', '-'] ]
+const _bexp_precedence_levels: Array[Array] = [ ['and'], ['or'] ]
+const _relops: Array[String] = ['<', '<=', '>', '>=', '==', '!=']
 
 var phrase: Parser
 
@@ -51,7 +58,6 @@ func _lex(code: String, token_exprs: Array[String]) -> Array[Array]:
 	var pos := 0
 	var tokens: Array[Array] = []
 	var reg := RegEx.new()
-	#print(token_exprs)
 	while pos < code.length():
 		var res: RegExMatch = null
 		for tidx: int in range(0, token_exprs.size(), 2):
@@ -83,8 +89,8 @@ class Parser:
 		return null
 	func concat(other: Parser) -> Parser: # +
 		return Concat.new(self, other)
-	func exp(other: Parser) -> Parser: # *
-		return Exp.new(self, other)
+	func splice(other: Parser) -> Parser: # *
+		return Splice.new(self, other)
 	func alternate(other: Parser) -> Parser: # |
 		return Alternate.new(self, other)
 	func process(function: Callable) -> Parser: # ^
@@ -183,7 +189,8 @@ class Phrase extends Parser:
 		return res if res and res.pos == tokens.size() else null
 	func _to_string() -> String: return str("Phrase(", parser, ")")
 
-class Exp extends Parser:
+# renamed from Exp
+class Splice extends Parser:
 	var parser: Parser
 	var separator: Parser
 	func _init(p: Parser, s: Parser) -> void: parser = p; separator = s
@@ -196,13 +203,13 @@ class Exp extends Parser:
 			next_res = next_parser.fn(tokens, res[0].pos)
 			if next_res: res[0] = next_res
 		return res[0]
-	func _to_string() -> String: return str("Exp(", parser, " ", separator, ")")
+	func _to_string() -> String: return str("Splice(", parser, " ", separator, ")")
 
 ### AST
 
 class Aexp: # Arithmetic
 	func eval(_env: Dictionary):
-		pass
+		return null
 
 class IntAexp extends Aexp:
 	var val: int
@@ -229,11 +236,13 @@ class BinopAexp extends Aexp:
 	func _init(o: String, l: Aexp, r: Aexp) -> void: op = o; left = l; right = r
 	func _to_string() -> String: return str("BinopAexp('", op, "', ", left, ", ", right, ")")
 	func eval(env: Dictionary):
+		var l = left.eval(env)
+		var r = right.eval(env)
 		match op:
-			"+": return left.eval(env) + right.eval(env)
-			"-": return left.eval(env) - right.eval(env)
-			"*": return left.eval(env) * right.eval(env)
-			"/": return left.eval(env) / right.eval(env)
+			"+": return l + r
+			"-": return l - r
+			"*": return l * r
+			"/": return l / r
 		printerr("Unknown op ", op)
 		return null
 
@@ -345,14 +354,12 @@ func _any_operator_in_list(ops) -> Parser:
 	var op_parsers = ops.map(func(o: String) -> Parser: return _keyword(o))
 	return op_parsers.reduce(func(l: Parser, r: Parser) -> Parser: return l.alternate(r))
 
-const _aexp_precedence_levels: Array[Array] = [ ['*', '/'], ['+', '-'] ]
-
 func _precedence(value_parser: Parser, precedence_levels: Array[Array], combine: Callable) -> Parser:
 	var op_parser := func(precedence_level) -> Parser:
 		return _any_operator_in_list(precedence_level).process(combine)
-	var parser := value_parser.exp(op_parser.call(precedence_levels[0]))
+	var parser := value_parser.splice(op_parser.call(precedence_levels[0]))
 	for precedence_level in precedence_levels.slice(1):
-		parser = parser.exp(op_parser.call(precedence_level))
+		parser = parser.splice(op_parser.call(precedence_level))
 	return parser
 
 func _aexp() -> Parser:
@@ -363,8 +370,7 @@ func _process_relop(parsed) -> Bexp:
 	#((left, op), right) = parsed \\ #return RelopBexp(op, left, right)
 
 func _bexp_relop() -> Parser:
-	var relops: Array[String] = ['<', '<=', '>', '>=', '==', '!=']
-	return _aexp().concat(_any_operator_in_list(relops)).concat(_aexp()).process(_process_relop)
+	return _aexp().concat(_any_operator_in_list(_relops)).concat(_aexp()).process(_process_relop)
 
 func _bexp_not() -> Parser:
 	return _keyword("not").concat(Lazy.new(_bexp_term)).process(func(parsed) -> Bexp: return NotBexp.new(parsed[1]))
@@ -374,8 +380,6 @@ func _bexp_group() -> Parser:
 
 func _bexp_term():
 	return _bexp_not().alternate(_bexp_relop()).alternate(_bexp_group())
-
-const _bexp_precedence_levels: Array[Array] = [ ['and'], ['or'] ]
 
 func _process_logic(op: String) -> Callable:
 	if op == "and": return func(l, r) -> Bexp: return AndBexp.new(l, r)
@@ -393,7 +397,7 @@ func _assign_stmt() -> Parser:
 
 func _stmt_list() -> Parser:
 	var separator = _keyword(";").process(func(_x): return func(l, r): return CompoundStatement.new(l, r))
-	return Exp.new(_stmt(), separator)
+	return Splice.new(_stmt(), separator)
 
 func _if_stmt() -> Parser:
 	var process := func(parsed) -> Statement:
