@@ -11,7 +11,7 @@ const _BOOL := "BOOL"
 const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"[ \n\t]+", "", r"#[^\n]*", "", # whitespaces
-	r";", _RESERVED, # separator
+	r";", _RESERVED, r",", _RESERVED, # separator
 	r"\+", _RESERVED, r"-", _RESERVED, r"\*", _RESERVED, r"/", _RESERVED,
 	r"<=", _RESERVED, r"<", _RESERVED, r">=", _RESERVED, r">", _RESERVED,
 	r"==", _RESERVED, r"!=", _RESERVED,
@@ -30,24 +30,25 @@ const _bexp_precedence_levels: Array[Array] = [ ['and'], ['or'] ]
 const _relops: Array[String] = ['<', '<=', '>', '>=', '==', '!=']
 
 var phrase: Parser
+var target: Object
 
 ###
 
-func _init() -> void:
+func _init(target_object: Object) -> void:
 	phrase = Phrase.new(_exp_list())
+	self.target = target_object
 
 ###
 
-func eval(code: String) -> bool:
+func eval(code: String):
 	var tokens := _lex(code, _TOKEN_EXPRESSIONS)
-	if not tokens: return false
+	if not tokens: return null
 	var parse_res := _imp_parse(tokens)
-	if not parse_res or not parse_res.value: return false
+	if not parse_res or not parse_res.value: return null
 	var env := {}
-	var eval_res = parse_res.value.eval(env)
-	print(env)
-	print(eval_res)
-	return true
+	var eval_res = parse_res.value.eval(self, env)
+	print(env, " --> ", eval_res)
+	return eval_res
 
 ### TOP-LEVEL
 
@@ -210,7 +211,7 @@ class Splice extends Parser:
 ### AST
 
 class Exp:
-	func eval(_env: Dictionary):
+	func eval(_gimpl: Gimpl, _env: Dictionary):
 		return null
 
 class Aexp extends Exp: # Arithmetic
@@ -220,19 +221,19 @@ class IntAexp extends Aexp:
 	var val: int
 	func _init(i: int) -> void: val = i
 	func _to_string() -> String: return str("IntAexp(", val, ")")
-	func eval(_env: Dictionary): return val
+	func eval(_gimpl: Gimpl, _env: Dictionary): return val
 
 class StringAexp extends Aexp:
 	var val: String
 	func _init(s: String) -> void: val = s.substr(1, s.length() - 2).c_unescape() # removing the quotation marks
 	func _to_string() -> String: return str("StringAexp(", val, ")")
-	func eval(_env: Dictionary): return val
+	func eval(_gimpl: Gimpl, _env: Dictionary): return val
 
 class VarAexp extends Aexp:
 	var name: String
 	func _init(n: String) -> void: name = n
 	func _to_string() -> String: return str("VarAexp('", name, "')")
-	func eval(env: Dictionary): return env[name] if env.has(name) else 0
+	func eval(_gimpl: Gimpl, env: Dictionary): return env[name] if env.has(name) else 0
 
 class BinopAexp extends Aexp:
 	var op: String
@@ -240,9 +241,9 @@ class BinopAexp extends Aexp:
 	var right: Aexp
 	func _init(o: String, l: Aexp, r: Aexp) -> void: op = o; left = l; right = r
 	func _to_string() -> String: return str("BinopAexp('", op, "', ", left, ", ", right, ")")
-	func eval(env: Dictionary):
-		var l = left.eval(env)
-		var r = right.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary):
+		var l = left.eval(gimpl, env)
+		var r = right.eval(gimpl, env)
 		match op:
 			"+": return l + r
 			"-": return l - r
@@ -258,22 +259,22 @@ class BoolBexp extends Bexp:
 	var val: bool
 	func _init(b: bool) -> void: val = b
 	func _to_string() -> String: return str("BoolAexp(", val, ")")
-	func eval(_env: Dictionary): return val
+	func eval(_gimpl: Gimpl, _env: Dictionary): return val
 
 class RelopBexp extends Bexp:
 	var op: String
-	var left: Aexp
-	var right: Aexp
-	func _init(o: String, l: Aexp, r: Aexp) -> void: op = o; left = l; right = r
+	var left: Exp
+	var right: Exp
+	func _init(o: String, l: Exp, r: Exp) -> void: op = o; left = l; right = r
 	func _to_string() -> String: return str("RelopBexp('", op, "', ", left, ", ", right, ")")
-	func eval(env: Dictionary):
+	func eval(gimpl: Gimpl, env: Dictionary):
 		match op:
-			"<": return left.eval(env) < right.eval(env)
-			"<=": return left.eval(env) <= right.eval(env)
-			">": return left.eval(env) > right.eval(env)
-			">=": return left.eval(env) >= right.eval(env)
-			"==": return left.eval(env) == right.eval(env)
-			"!=": return left.eval(env) != right.eval(env)
+			"<": return left.eval(gimpl, env) < right.eval(gimpl, env)
+			"<=": return left.eval(gimpl, env) <= right.eval(gimpl, env)
+			">": return left.eval(gimpl, env) > right.eval(gimpl, env)
+			">=": return left.eval(gimpl, env) >= right.eval(gimpl, env)
+			"==": return left.eval(gimpl, env) == right.eval(gimpl, env)
+			"!=": return left.eval(gimpl, env) != right.eval(gimpl, env)
 		printerr("Unknown op ", op)
 		return null
 
@@ -282,28 +283,28 @@ class AndBexp extends Bexp:
 	var right: Bexp
 	func _init(l: Bexp, r: Bexp) -> void: left = l; right = r
 	func _to_string() -> String: return str("AndBexp(", left, ", ", right, ")")
-	func eval(env: Dictionary): return left.eval(env) and right.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary): return left.eval(gimpl, env) and right.eval(gimpl, env)
 
 class OrBexp extends Bexp:
 	var left: Bexp
 	var right: Bexp
 	func _init(l: Bexp, r: Bexp) -> void: left = l; right = r
 	func _to_string() -> String: return str("OrBexp(", left, ", ", right, ")")
-	func eval(env: Dictionary): return left.eval(env) or right.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary): return left.eval(gimpl, env) or right.eval(gimpl, env)
 
 class NotBexp extends Bexp:
 	var bexp: Bexp
 	func _init(b: Bexp) -> void: bexp = b
 	func _to_string() -> String: return str("NotBexp(", bexp, ")")
-	func eval(env: Dictionary): return not bexp.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary): return not bexp.eval(gimpl, env)
 
 class AssignExp extends Exp:
 	var name: String
 	var express: Exp
 	func _init(n: String, e: Exp) -> void: name = n; express = e
 	func _to_string() -> String: return str("AssignExp(", name, ", ", express, ")")
-	func eval(env: Dictionary):
-		var val = express.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary):
+		var val = express.eval(gimpl, env)
 		env[name] = val
 		return val
 
@@ -312,9 +313,11 @@ class CompoundExp extends Exp:
 	var second: Exp
 	func _init(f: Exp, s: Exp) -> void: first = f; second = s
 	func _to_string() -> String: return str("CompoundExp(", first, ", ", second, ")")
-	func eval(env: Dictionary):
-		first.eval(env)
-		return second.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary):
+		var res = null
+		if first: res = first.eval(gimpl, env)
+		if second: res = second.eval(gimpl, env)
+		return res
 
 class IfExp extends Exp:
 	var condition: Bexp
@@ -322,11 +325,11 @@ class IfExp extends Exp:
 	var false_exp: Exp
 	func _init(c: Bexp, t: Exp, f: Exp) -> void: condition = c; true_exp = t; false_exp = f
 	func _to_string() -> String: return str("IfExp(", condition, ", ", true_exp, ", ", false_exp, ")")
-	func eval(env: Dictionary):
-		if condition.eval(env):
-			return true_exp.eval(env)
+	func eval(gimpl: Gimpl, env: Dictionary):
+		if condition.eval(gimpl, env):
+			return true_exp.eval(gimpl, env)
 		elif false_exp:
-			return false_exp.eval(env)
+			return false_exp.eval(gimpl, env)
 		return null
 
 class WhileExp extends Exp:
@@ -334,11 +337,23 @@ class WhileExp extends Exp:
 	var body: Exp
 	func _init(c: Bexp, b: Exp) -> void: condition = c; body = b
 	func _to_string() -> String: return str("WhileExp(", condition, ", ", body, ")")
-	func eval(env: Dictionary):
+	func eval(gimpl: Gimpl, env: Dictionary):
 		var val = null
-		while condition.eval(env):
-			val = body.eval(env)
+		while condition.eval(gimpl, env):
+			val = body.eval(gimpl, env)
 		return val
+
+class FnCallExp extends Exp:
+	var fn: String
+	var params: Array
+	func _init(f: String, p: Array) -> void: fn = f; params = p
+	func _to_string() -> String: return str("FnCallExp(", fn, ", ", params, ")")
+	func eval(gimpl: Gimpl, env: Dictionary):
+		if not gimpl.target or not gimpl.target.has_method(fn):
+			printerr("Could not call fn ", fn)
+			return null
+		if params: return gimpl.target.callv(fn, params.map(func(p): return p.eval(gimpl, env)))
+		return gimpl.target.call(fn)
 
 ### PARSER
 
@@ -384,9 +399,9 @@ func _aexp() -> Parser:
 
 func _process_relop(parsed) -> Bexp:
 	return RelopBexp.new(parsed[0][1], parsed[0][0], parsed[1])
-	#((left, op), right) = parsed \\ #return RelopBexp(op, left, right)
 
 func _bexp_relop() -> Parser:
+	#return Lazy.new(_exp).concat(_any_operator_in_list(_relops)).concat(Lazy.new(_exp)).process(_process_relop)
 	return _aexp().concat(_any_operator_in_list(_relops)).concat(_aexp()).process(_process_relop)
 
 func _bexp_not() -> Parser:
@@ -416,6 +431,10 @@ func _assign_exp() -> Parser:
 	#return _id.concat(_keyword("=")).concat(_aexp()).process(process)
 	return _id.concat(_keyword("=")).concat(Lazy.new(_exp)).process(process)
 
+func _exp_params() -> Parser:
+	var separator = _keyword(",").process(func(_x): return func(l, r): return CompoundExp.new(l, r))
+	return Splice.new(_exp(), separator)
+
 func _exp_list() -> Parser:
 	var separator = _keyword(";").process(func(_x): return func(l, r): return CompoundExp.new(l, r))
 	return Splice.new(_exp(), separator)
@@ -435,5 +454,18 @@ func _while_exp() -> Parser:
 	return _keyword("while").concat(_bexp()).concat(_keyword("do")).concat(Lazy.new(_exp_list)) \
 		.concat(_keyword("end")).process(process)
 
+func _fncall_exp() -> Parser:
+	var process := func(parsed) -> Exp:
+		var params: Array
+		if parsed[0][1]:
+			var p = parsed[0][1] as CompoundExp
+			while p:
+				params.push_front(p.second)
+				if p.first is CompoundExp: p = p.first
+				else: params.push_front(p.first); break
+		return FnCallExp.new(parsed[0][0][0], params)
+	return _id.concat(_keyword("(")).concat(Opt.new(Lazy.new(_exp_params))).concat(_keyword(")")).process(process)
+
 func _exp() -> Parser:
-	return _assign_exp().alternate(_if_exp()).alternate(_while_exp()).alternate(_bexp()).alternate(_aexp())
+	return _assign_exp().alternate(_if_exp()).alternate(_while_exp()).alternate(_fncall_exp()) \
+		.alternate(_bexp()).alternate(_aexp())
