@@ -457,12 +457,15 @@ func _while_exp() -> Parser:
 func _fncall_exp() -> Parser:
 	var process := func(parsed) -> Exp:
 		var params: Array
-		if parsed[0][1]:
-			var p = parsed[0][1] as CompoundExp
-			while p:
+		var p = parsed[0][1]
+		while p:
+			if p is CompoundExp:
 				params.push_front(p.second)
 				if p.first is CompoundExp: p = p.first
 				else: params.push_front(p.first); break
+			else:
+				params.push_front(p)
+				break
 		return FnCallExp.new(parsed[0][0][0], params)
 	return _id.concat(_keyword("(")).concat(Opt.new(Lazy.new(_exp_params))).concat(_keyword(")")).process(process)
 
