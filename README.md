@@ -1,6 +1,8 @@
 # Gimpl
 
-Gimpl is based on IMP, a tiny tutorial language by Jay Conrod: https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-
+Gimpl is based on IMP, a [tiny tutorial language](https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-) by Jay Conrod.
+
+I'm no expert when it comes to compilers and interpreters. I needed a small scripting language for our current game project, so I ported Conrod's IMP to GDScript and extended it a bit.
 
 ---
 
