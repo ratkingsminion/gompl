@@ -10,7 +10,7 @@ Gimpl uses = for assignment and == for comparison.
 
 Everything is expressions, so you can do things like `x = if y != 5 then 0 else 10 end`.
 
-Gimpl also supports strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gimpl.
+Gimpl also supports negative numbers (IMP didn't), strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gimpl.
 
 Example:
 
@@ -32,7 +32,7 @@ func _ready() -> void:
 
 Limitations:
 
-* Almost no error messages
+* Almost no error handling/messages
 * No comments allowed
 * Lists of expressions need to be separated with `;`
 * There is no `break` and `continue`
