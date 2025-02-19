@@ -26,11 +26,11 @@ func _ready() -> void:
 	
 	gimpl.eval('
 		test = "str";
-		x = x + 5;
+		x = x - 7;
 		t = if test != "str" then 100 else 50 end;
-		r = s = 5;
+		r = s = -5;
 		w = false;
-		t - 50 > 0')
+		t - 50 == 0')
 	
 	for i in 20: await get_tree().process_frame
 	get_tree().quit()

@@ -223,6 +223,12 @@ class IntAexp extends Aexp:
 	func _to_string() -> String: return str("IntAexp(", val, ")")
 	func eval(_gimpl: Gimpl, _env: Dictionary): return val
 
+class NegAexp extends Aexp:
+	var aexp: Aexp
+	func _init(a: Aexp) -> void: aexp = a
+	func _to_string() -> String: return str("NegBexp(", aexp, ")")
+	func eval(gimpl: Gimpl, env: Dictionary): return -aexp.eval(gimpl, env)
+
 class StringAexp extends Aexp:
 	var val: String
 	func _init(s: String) -> void: val = s.substr(1, s.length() - 2).c_unescape() # removing the quotation marks
@@ -365,6 +371,9 @@ var _num := Tag.new(_INT).process(func(i) -> int: return int(i))
 var _string := Tag.new(_STRING).process(func(s) -> String: return str(s))
 var _bool := Tag.new(_BOOL).process(func(b) -> bool: if b is String: return b == "true" else: return bool(b))
 
+func _aexp_neg() -> Parser:
+	return _keyword("-").concat(Lazy.new(_aexp_term)).process(func(parsed) -> Aexp: return NegAexp.new(parsed[1]))
+
 func _aexp_value() -> Parser:
 	return _num.process(func(i) -> Aexp: return IntAexp.new(i)) \
 		.alternate(_string.process(func(s) -> Aexp: return StringAexp.new(s))) \
@@ -377,7 +386,7 @@ func _aexp_group() -> Parser:
 	return _keyword("(").concat(Lazy.new(_aexp)).concat(_keyword(")")).process(_process_group)
 
 func _aexp_term() -> Parser:
-	return _aexp_value().alternate(_aexp_group())
+	return _aexp_value().alternate(_aexp_neg()).alternate(_aexp_group())
 	
 func _process_binop(op: String) -> Callable:
 	return func(l: Aexp, r: Aexp) -> Aexp: return BinopAexp.new(op, l, r)
