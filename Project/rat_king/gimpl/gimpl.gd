@@ -71,13 +71,11 @@ func _lex(code: String) -> Array[Array]:
 			res = reg.search(code, pos)
 			if res and res.get_start() == pos:
 				var tag := _TOKEN_EXPRESSIONS[tidx + 1]
-				if not tag: break # i.e. is not whitespace to ignore
+				if tag == _IGNORE: break
 				var value := res.get_string()
 				if tag == _ID:
-					for kw: String in _TOKEN_KEYWORDS:
-						if value == kw: tag = _RESERVED; break
-					for b: String in _TOKEN_BOOLS:
-						if value == b: tag = _BOOL; break
+					if value in _TOKEN_KEYWORDS: tag = _RESERVED
+					elif value in _TOKEN_BOOLS: tag = _BOOL
 				var token: Array[String] = [ value, tag ]
 				tokens.append(token)
 				break
