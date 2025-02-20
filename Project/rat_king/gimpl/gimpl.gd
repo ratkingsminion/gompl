@@ -4,25 +4,28 @@ extends RefCounted
 ## A simple interpreted scripting language for Godot
 ## Based on https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-
 
+const _IGNORE := ""
 const _RESERVED := "RESERVED"
 const _INT := "INT"
 const _STRING := "STRING"
 const _BOOL := "BOOL"
 const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
-	r"[ \n\t]+", "", r"#[^\n]*", "", # whitespaces
+	r"[ \n\t]+", _IGNORE, r"#[^\n]*", _IGNORE, # whitespaces
 	r";", _RESERVED, r",", _RESERVED, # separator
 	r"\+", _RESERVED, r"-", _RESERVED, r"\*", _RESERVED, r"/", _RESERVED,
 	r"<=", _RESERVED, r"<", _RESERVED, r">=", _RESERVED, r">", _RESERVED,
 	r"==", _RESERVED, r"!=", _RESERVED,
 	r"\=", _RESERVED, r"\(", _RESERVED, r"\)", _RESERVED,
-	r"and", _RESERVED, r"or", _RESERVED, r"not", _RESERVED,
-	r"if", _RESERVED, r"then", _RESERVED, r"else", _RESERVED,
-	r"while", _RESERVED, r"do", _RESERVED, r"end", _RESERVED,
 	r"[0-9]+", _INT,
 	r"\"(.*?(?<!\\))\"", _STRING,
-	r"true", _BOOL, r"false", _BOOL,
 	r"[A-Za-z_][A-Za-z0-9_]*", _ID
+]
+const _TOKEN_KEYWORDS: Array[String] = [
+	"and", "or", "not", "if", "then", "else", "while", "do", "end"
+]
+const _TOKEN_BOOLS: Array[String] = [
+	"true", "false"
 ]
 
 const _aexp_precedence_levels: Array[Array] = [ ['*', '/'], ['+', '-'] ]
@@ -41,7 +44,7 @@ func _init(target_object: Object) -> void:
 ###
 
 func eval(code: String):
-	var tokens := _lex(code, _TOKEN_EXPRESSIONS)
+	var tokens := _lex(code)
 	if not tokens: return null
 	var parse_res := _imp_parse(tokens)
 	if not parse_res or not parse_res.value: return null
@@ -57,20 +60,26 @@ func _imp_parse(tokens: Array[Array]) -> ParseRes:
 
 ### LEXER
 
-func _lex(code: String, token_exprs: Array[String]) -> Array[Array]:
+func _lex(code: String) -> Array[Array]:
 	var pos := 0
 	var tokens: Array[Array] = []
 	var reg := RegEx.new()
 	while pos < code.length():
 		var res: RegExMatch = null
-		for tidx: int in range(0, token_exprs.size(), 2):
-			reg.compile(token_exprs[tidx])
+		for tidx: int in range(0, _TOKEN_EXPRESSIONS.size(), 2):
+			reg.compile(_TOKEN_EXPRESSIONS[tidx])
 			res = reg.search(code, pos)
 			if res and res.get_start() == pos:
-				var tag := token_exprs[tidx + 1]
-				if tag: # i.e. is not whitespace to ignore
-					var token: Array[String] = [ res.get_string(), tag ]
-					tokens.append(token)
+				var tag := _TOKEN_EXPRESSIONS[tidx + 1]
+				if not tag: break # i.e. is not whitespace to ignore
+				var value := res.get_string()
+				if tag == _ID:
+					for kw: String in _TOKEN_KEYWORDS:
+						if value == kw: tag = _RESERVED; break
+					for b: String in _TOKEN_BOOLS:
+						if value == b: tag = _BOOL; break
+				var token: Array[String] = [ value, tag ]
+				tokens.append(token)
 				break
 		if not res:
 			printerr("Illegal character: ", code[pos], " at ", pos)

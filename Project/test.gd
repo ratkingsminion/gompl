@@ -13,6 +13,7 @@ func _ready() -> void:
 	var gimpl := Gimpl.new(self)
 	
 	gimpl.eval('
+		ifif = 2;
 		func_call_1();
 		func_call_2("foo", 2)')
 	
