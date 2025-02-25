@@ -8,7 +8,7 @@ Gompl uses = for assignment and == for comparison.
 
 Everything is an expression, so you can do things like `x = if y != 5 then 0 else 10 end`.
 
-Gompl also supports negative numbers (IMP didn't), strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl.
+Gompl also supports negative numbers (IMP didn't), strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl. No `;`s are necessary.
 
 Example:
 
@@ -31,6 +31,7 @@ func _ready() -> void:
 Limitations:
 
 * Probably sub-par error handling/messages
+* Only integers for numbers
 * Comments via `//` only
 * Only `while`-`do` exists, no for-loop
 * An `if`-`then`-`else` with more than one `else` has to be nested
