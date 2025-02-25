@@ -10,10 +10,11 @@ config_version=5
 
 [application]
 
-config/name="gimpl"
-config/description="An implementation of IMP in GDScript
+config/name="gompl"
+config/description="An extended implementation of IMP in GDScript
 
 IMP: https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-"
+config/version="1.0"
 config/tags=PackedStringArray("tool")
 run/main_scene="res://test.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
