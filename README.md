@@ -20,7 +20,7 @@ func _ready() -> void:
   var gimpl := Gompl.new(self)
   var res = gompl.eval('
     while x < 10 do // variables are always initialised as 0
-      some_method(x) // be careful to use the corrent parameters
+      some_method(x) // be careful to use the correct parameters
       x = x + 1
     end')
   print(res)
