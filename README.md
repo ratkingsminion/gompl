@@ -18,9 +18,8 @@ func some_method(p):
 
 func _ready() -> void:
   var gimpl := Gompl.new(self)
-  # variables are always initialised as 0
   var res = gompl.eval('
-    while x < 10 do
+    while x < 10 do // variables are always initialised as 0
       some_method(x) // be careful to use the corrent parameters
       x = x + 1
     end')
