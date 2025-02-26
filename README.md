@@ -1,6 +1,6 @@
 # Gompl
 
-*Gompl is based on IMP, a [tiny tutorial language](https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-) by Jay Conrod. I needed a small scripting language for our current game project, so I ported Conrod's IMP to GDScript, extended it a bit and named it Gimpl. After a while I wasn't totally satisfied with the outcome, so I took Jay Conrod's advice and ditched the combinators approach and now use recursive descent parsing as described in https://craftinginterpreters.com.*
+*Gompl is based on IMP, a [tiny tutorial language](https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-) by Jay Conrod. I needed a small scripting language for our current game project, so I ported Conrod's IMP to GDScript, extended it a bit and named it Gimpl. After a while I wasn't totally satisfied with the outcome, so I took Jay Conrod's advice and ditched the combinators approach and now use recursive descent parsing as described in [Crafting Interpreters[https://craftinginterpreters.com].*
 
 ---
 
@@ -32,7 +32,8 @@ Limitations:
 
 * Probably sub-par error handling/messages
 * Only integers for numbers
-* Comments via `//` only
+* No functions
+* All variables have global scope
 * Only `while`-`do` exists, no for-loop
 * An `if`-`then`-`else` with more than one `else` has to be nested
 * There is no `break` and `continue` for loops
