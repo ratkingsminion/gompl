@@ -34,6 +34,7 @@ const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
 const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "while", "do", "end" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
+var debug_printing := false
 var err: String
 var target: Object
 
@@ -46,23 +47,47 @@ func _init(target_object: Object = null) -> void:
 
 ## env is a Dictionary that contains all the variables assigned in the code
 func eval(code: String, env = null):
+	var tokens := tokenize_code(code)
+	if tokens:
+		var ast := parse_tokens(tokens)
+		if ast: return evaluate_ast(ast, env)
+	return null # some error happened
+
+###
+
+## Step 1 - returns the tokens of the code
+func tokenize_code(code: String) -> Array[Array]:
 	err = ""
 	var tokens := _lex(code)
-	if err: printerr(err); return null
-	if not tokens: return null
-	#print("TOKENS: ", tokens)
+	if err: printerr(err); return []
+	if debug_printing and tokens: print("TOKENS: ", tokens)
+	return tokens
+
+## Step 2 - returns the AST (abstract syntax tree) of the tokens
+func parse_tokens(tokens: Array[Array]) -> Expr:
+	err = ""
 	var parser := Parser.new(self, tokens)
 	if err: printerr(err); return null
 	var ast := parser.parse()
 	if err: printerr(err); return null
-	#if ast: print("AST: ", ast)
+	if debug_printing and ast: print("AST: ", ast)
+	return ast
+
+## Step 3 - evaluate the AST
+## env is a Dictionary that contains all the variables assigned in the code
+## If you don't provide env, a temporary one will be created
+func evaluate_ast(ast: Expr, env = null):
+	err = ""
 	if env == null: env = {}
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
 	var res = ast.eval(self, env)
 	if err: printerr(err); return null
-	#if res: print("RESULT: ", res)
-	#print("ENVIRONMENT: ", env)
+	if debug_printing and res: print("RESULT: ", res)
+	if debug_printing: print("ENVIRONMENT: ", env)
 	return res
+	
+
+###
 
 func _set_err(e: String, overwrite := false) -> void:
 	if err and not overwrite: return
@@ -128,6 +153,7 @@ class Expr:
 					return l - r
 				"*":
 					if l is String and r is int: return l.repeat(r)
+					if l is int and r is String: return r.repeat(l)
 					return l * r
 				"/": return l / r
 	class Unary extends Expr:
