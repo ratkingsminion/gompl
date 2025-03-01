@@ -9,6 +9,7 @@ const _IGNORE := "IGN"
 const _RESERVED := "RSV"
 const _INT := "INT"
 const _STRING := "STR"
+const _UNDEFINED := "NIL"
 const _BOOL := "BOOL"
 const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
@@ -32,6 +33,7 @@ const _TOKEN_FACTOR: Array[String] = [ "/", "*" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
 const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "while", "do", "end" ]
+const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
 var debug_printing := false
@@ -109,8 +111,10 @@ func _lex(code: String) -> Array[Array]:
 				tag = _TOKEN_EXPRESSIONS[tidx + 1]
 				if tag == _IGNORE: break
 				var value := res.get_string()
-				if tag == _ID and value in _TOKEN_KEYWORDS: tag = _RESERVED
-				if tag == _ID and value in _TOKEN_BOOLS: tag = _BOOL
+				if tag == _ID:
+					if value in _TOKEN_KEYWORDS: tag = _RESERVED
+					elif value in _TOKEN_BOOLS: tag = _BOOL
+					elif value in _TOKEN_UNDEFINED: tag = _UNDEFINED
 				var token: Array[String] = [ value, tag ]
 				tokens.append(token)
 				break
@@ -155,7 +159,9 @@ class Expr:
 					if l is String and r is int: return l.repeat(r)
 					if l is int and r is String: return r.repeat(l)
 					return l * r
-				"/": return l / r
+				"/":
+					if r == 0: gompl._set_err("Division by zero"); return null
+					return l / r
 	class Unary extends Expr:
 		var op: String
 		var right: Expr
@@ -338,6 +344,7 @@ class Parser:
 		if pos >= tokens.size(): return null
 		var res: Expr = null
 		match tokens[pos][1]:
+			_UNDEFINED: res = Expr.Literal.new(null)
 			_BOOL: res = Expr.Literal.new(tokens[pos][0] == "true")
 			_INT: res = Expr.Literal.new(int(tokens[pos][0]))
 			_STRING: res = Expr.Literal.new(tokens[pos][0].substr(1, tokens[pos][0].length() - 2).c_unescape()) # removing the quotation marks

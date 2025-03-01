@@ -9,12 +9,16 @@ func func_2(a, b, c = "optional param"):
 	prints("Function call test 2 -", a, b, c)
 	return "return value from func_2"
 
+func print(p): print(p)
+
 ###
 
 func _ready() -> void:
 	var g := Gompl.new(self)
+	var res
 	
-	var res = g.eval('
+	# test calling GDScript functions
+	res = g.eval('
 		ifif = 2 // keywords can be part of the identifier names
 		func_1()
 		func_2("foo", 2,)
@@ -24,6 +28,7 @@ func _ready() -> void:
 	')
 	print("RESULT 1: ", res) # "return value from func_2"
 	
+	# test factorial code
 	res = g.eval('
 		n = 5 // no ; needed
 		p = 1
@@ -35,6 +40,7 @@ func _ready() -> void:
 	')
 	print("RESULT 2: ", res) # 120
 	
+	# test custom env Dictionary, and some assignments
 	var env = {}
 	res = g.eval('
 		test = "str"
@@ -46,6 +52,13 @@ func _ready() -> void:
 	', env)
 	print("RESULT 3: ", res) # true
 	print("-> WITH ENVIRONMENT: ", env)
+	
+	# test undefined (== null in GDScript)
+	res = g.eval('
+		y = if x == 5 then "y is undefined because this if expression returns null" end
+		if y == undefined then print("y is not defined") end
+	')
+	print("RESULT 4: ", res)
 	
 	# Wait a bit before closing
 	for i in 20: await get_tree().process_frame
