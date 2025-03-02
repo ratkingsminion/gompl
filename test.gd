@@ -44,10 +44,10 @@ func _ready() -> void:
 	var env = {}
 	res = g.eval('
 		test = "str"
-		x = x + 7 // a non-existent variable is 0, so this line sets x to 0 + 7 = 7
 		t = if test != "str" then 100 else 50 end // if-then-else and while-do can be used as expressions
 		r = s = -5 // assignments are expressions too
 		w = false
+		r = undefined // r will be removed from env
 		t - 50 == 0
 	', env)
 	print("RESULT 3: ", res) # true
@@ -55,10 +55,24 @@ func _ready() -> void:
 	
 	# test undefined (== null in GDScript)
 	res = g.eval('
-		y = if x == 5 then "y is undefined because this if expression returns null" end
+		y = if 1 + 1 == 3 then "y is undefined because this if-expression returns null" end
 		if y == undefined then print("y is not defined") end
+		y // will return <null>
 	')
-	print("RESULT 4: ", res)
+	print("RESULT 4: ", res) # null
+	
+	# test skip and stop
+	res = g.eval('
+		x = -1
+		while x < 10 do
+			x = x + 1
+			if x == 3 then skip end
+			if x == 6 then stop end
+			print(x)
+		end
+		x
+	')
+	print("RESULT 5: ", res) # 6
 	
 	# Wait a bit before closing
 	for i in 20: await get_tree().process_frame

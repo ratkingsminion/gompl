@@ -6,9 +6,11 @@
 
 Gompl uses = for assignment and == for comparison.
 
-Everything is an expression, so you can do things like `x = if y != 5 then 0 else 10 end`.
+Everything is an expression, so you can do things like `x = if y != 5 then 0 else 10 end`. No `;`s are necessary.
 
-Gompl also supports negative numbers (IMP didn't), strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl. No `;`s are necessary.
+For "break" and "continue" use `stop` and `skip` in `while`-loops.
+
+Gompl also supports negative numbers (IMP didn't), strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl.
 
 Example:
 
@@ -19,10 +21,11 @@ func some_method(p):
 func _ready() -> void:
   var gompl := Gompl.new(self)
   var res = gompl.eval('
-    while x < 10 do // variables are always initialised as 0
-      some_method(x) // be careful to use the correct parameters
-      x = x + 1
-    end')
+	x = 0 // variables should be initialised
+	while x < 10 do
+	  some_method(x) // be careful to use the correct amount and type of parameters
+	  x = x + 1
+	end')
   print(res)
 ```
 
@@ -30,11 +33,10 @@ func _ready() -> void:
 
 Limitations:
 
-* Probably sub-par error handling/messages
+* Sub-par error handling/messages (only shows current token, not line number)
 * Only integers for numbers
 * No functions
 * All variables have global scope
 * Only `while`-`do` exists, no for-loop
 * An `if`-`then`-`else` with more than one `else` has to be nested
-* There is no `break` and `continue` for loops
 * Probably not the best performance

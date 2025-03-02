@@ -5,6 +5,8 @@ extends RefCounted
 ## Based on https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-
 ## and https://jayconrod.com/posts/65/how-to-build-a-parser-by-hand
 
+static var undefined: _Undefined = _Undefined.new() # only use this
+	
 const _IGNORE := "IGN"
 const _RESERVED := "RSV"
 const _INT := "INT"
@@ -32,13 +34,15 @@ const _TOKEN_TERM: Array[String] = [ "-", "+" ]
 const _TOKEN_FACTOR: Array[String] = [ "/", "*" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "while", "do", "end" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "while", "do", "end", "stop", "skip" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
 var debug_printing := false
 var err: String
 var target: Object
+
+var _stack: Array[Scope]
 
 ###
 
@@ -83,6 +87,7 @@ func evaluate_ast(ast: Expr, env = null):
 	if env == null: env = {}
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
 	var res = ast.eval(self, env)
+	_stack.clear()
 	if err: printerr(err); return null
 	if debug_printing and res: print("RESULT: ", res)
 	if debug_printing: print("ENVIRONMENT: ", env)
@@ -126,6 +131,15 @@ func _lex(code: String) -> Array[Array]:
 
 ### EXPRESSIONS
 
+class _Undefined extends Expr:
+	func _to_string() -> String: return "undefined"
+	func eval(_gompl: Gompl, _env: Dictionary): return Gompl.undefined
+
+class Scope:
+	var scope: Expr
+	var last: Expr = null
+	func _init(s: Expr) -> void: scope = s
+
 class Expr:
 	func eval(_gompl: Gompl, _env: Dictionary):
 		return null
@@ -141,10 +155,13 @@ class Expr:
 			var l = left.eval(gompl, env)
 			var r = right.eval(gompl, env)
 			match op:
+				"==": return typeof(l) == typeof(r) and l == r
+				"!=": return typeof(l) != typeof(r) or l != r
+			if l is _Undefined: gompl._set_err("Trying to use undefined variable in binary operation"); return Gompl.undefined
+			if r is _Undefined: gompl._set_err("Trying to use undefined variable in binary operation"); return Gompl.undefined
+			match op:
 				"and": return l and r
 				"or": return l or r
-				"==": return l == r
-				"!=": return l != r
 				"<": return l < r
 				"<=": return l <= r
 				">": return l > r
@@ -157,10 +174,10 @@ class Expr:
 					return l - r
 				"*":
 					if l is String and r is int: return l.repeat(r)
-					if l is int and r is String: return r.repeat(l)
+					elif l is int and r is String: return r.repeat(l)
 					return l * r
 				"/":
-					if r == 0: gompl._set_err("Division by zero"); return null
+					if r == 0: gompl._set_err("Division by zero"); return Gompl.undefined
 					return l / r
 	class Unary extends Expr:
 		var op: String
@@ -168,9 +185,11 @@ class Expr:
 		func _init(o: String, r: Expr) -> void: op = o; right = r
 		func _to_string() -> String: return str("Unary('", op, "', ", right, ")")
 		func eval(gompl: Gompl, env: Dictionary):
+			var r = right.eval(gompl, env)
+			if r is _Undefined: gompl._set_err("Trying to use undefined variable in unary operation"); return Gompl.undefined
 			match op:
-				"not": return not right.eval(gompl, env)
-				"-": return -right.eval(gompl, env)
+				"not": return not r
+				"-": return -r
 	class Assignment extends Expr:
 		var left: Identifier
 		var op: String
@@ -179,7 +198,8 @@ class Expr:
 		func _to_string() -> String: return str("Assignment(", left, ", '", op, "', ", right, ")")
 		func eval(gompl: Gompl, env: Dictionary):
 			var res = right.eval(gompl, env)
-			env[left.name] = res
+			if res is _Undefined: env.erase(left.name)
+			else: env[left.name] = res
 			return res
 	class Literal extends Expr:
 		var lit
@@ -191,7 +211,7 @@ class Expr:
 		var expr: Expr
 		func _init(e: Expr) -> void: expr = e
 		func _to_string() -> String: return str("Grouping(", expr, ")")
-		func eval(gompl: Gompl, env: Dictionary):
+		func eval(gompl: Gompl, env: Dictionary): 
 			return expr.eval(gompl, env)
 	class List extends Expr:
 		var exprs: Array[Expr]
@@ -199,15 +219,22 @@ class Expr:
 		func _to_string() -> String: return str("List(", exprs, ")")
 		func eval(gompl: Gompl, env: Dictionary):
 			var res
-			for e: Expr in exprs:
-				res = e.eval(gompl, env)
+			if gompl._stack:
+				for e: Expr in exprs:
+					var s: Expr = gompl._stack.back().last
+					if s is Stop or s is Skip: break
+					res = e.eval(gompl, env)
+				return res
+			else:
+				for e: Expr in exprs:
+					res = e.eval(gompl, env)
 			return res
 	class Identifier extends Expr:
 		var name: String
 		func _init(n: String) -> void: name = n
 		func _to_string() -> String: return str("Identifier('", name, "')")
 		func eval(_gompl: Gompl, env: Dictionary):
-			return env[name] if env.has(name) else 0 # TODO: standard value 0
+			return env[name] if env.has(name) else Gompl.undefined
 	class If extends Expr:
 		var cond: Expr
 		var true_expr: Expr
@@ -216,7 +243,7 @@ class Expr:
 		func _to_string() -> String: return str("If(", cond, ", ", true_expr, ", ", false_expr, ")")
 		func eval(gompl: Gompl, env: Dictionary):
 			if cond.eval(gompl, env): return true_expr.eval(gompl, env)
-			return false_expr.eval(gompl, env) if false_expr else null
+			return false_expr.eval(gompl, env) if false_expr else Gompl.undefined
 	class While extends Expr:
 		var cond: Expr
 		var expr: Expr
@@ -224,9 +251,26 @@ class Expr:
 		func _to_string() -> String: return str("While(", cond, ", ", expr, ")")
 		func eval(gompl: Gompl, env: Dictionary):
 			var res
+			var scope := Scope.new(self)
+			gompl._stack.push_back(scope)
 			while cond.eval(gompl, env):
 				res = expr.eval(gompl, env)
+				if scope.last is Stop: scope.last = Gompl.undefined; break
+				scope.last = null
+			gompl._stack.erase(scope)
 			return res
+	class Stop extends Expr:
+		func _to_string() -> String: return str("Stop()")
+		func eval(gompl: Gompl, _env: Dictionary):
+			if gompl._stack: gompl._stack.back().last = self
+			else: gompl._set_err(str("Unexpected 'stop'"))
+			return Gompl.undefined
+	class Skip extends Expr:
+		func _to_string() -> String: return str("Skip()")
+		func eval(gompl: Gompl, _env: Dictionary):
+			if gompl._stack: gompl._stack.back().last = self
+			else: gompl._set_err(str("Unexpected 'skip'"))
+			return Gompl.undefined
 	class FnCall extends Expr:
 		var method: String
 		var params: Array[Expr]
@@ -236,7 +280,7 @@ class Expr:
 			if not gompl.target or not gompl.target.has_method(method):
 				gompl._set_err(str("FnCall('", method, "', ", params.size(), "): Could not call function '", method, "'"))
 				return null
-			if params: return gompl.target.callv(method, params.map(func(p): return p.eval(gompl, env) if p else null))
+			if params: return gompl.target.callv(method, params.map(func(p): return p.eval(gompl, env) if p and p is not _Undefined else null))
 			return gompl.target.call(method)
 
 ### PARSER
@@ -344,7 +388,7 @@ class Parser:
 		if pos >= tokens.size(): return null
 		var res: Expr = null
 		match tokens[pos][1]:
-			_UNDEFINED: res = Expr.Literal.new(null)
+			_UNDEFINED: res = Gompl.undefined
 			_BOOL: res = Expr.Literal.new(tokens[pos][0] == "true")
 			_INT: res = Expr.Literal.new(int(tokens[pos][0]))
 			_STRING: res = Expr.Literal.new(tokens[pos][0].substr(1, tokens[pos][0].length() - 2).c_unescape()) # removing the quotation marks
@@ -376,8 +420,8 @@ class Parser:
 					pos += 1
 					var cond := expression()
 					if not cond: _set_err("Expect condition after 'if'")
-					elif pos >= tokens.size(): _set_err("Expect 'then' after condition, early EOF")
-					elif tokens[pos][0] != "then": _set_err("Expect 'then' after condition")
+					elif pos >= tokens.size(): _set_err("Expect 'then' after 'if' condition, early EOF")
+					elif tokens[pos][0] != "then": _set_err("Expect 'then' after 'if' condition")
 					else:
 						pos += 1
 						var body_true := expressions()
@@ -396,8 +440,8 @@ class Parser:
 					pos += 1
 					var cond := expression()
 					if not cond: _set_err("Expect condition after 'while'")
-					elif pos >= tokens.size(): _set_err("Expect 'do' after condition, early EOF")
-					elif tokens[pos][0] != "do": _set_err("Expect 'do' after condition")
+					elif pos >= tokens.size(): _set_err("Expect 'do' after 'while' condition, early EOF")
+					elif tokens[pos][0] != "do": _set_err("Expect 'do' after 'while' condition")
 					else:
 						pos += 1
 						var body := expressions()
@@ -405,6 +449,10 @@ class Parser:
 						elif pos >= tokens.size() : _set_err("Expect 'end' after while-body, early EOF")
 						elif tokens[pos][0] != "end": _set_err("Expect 'end' after while-body")
 						else: res = Expr.While.new(cond, body)
+				elif tokens[pos][0] == "stop":
+					res = Expr.Stop.new()
+				elif tokens[pos][0] == "skip":
+					res = Expr.Skip.new()
 				else:
 					pass # do nothing, otherwise expressions() always spits out an error
 		if res: pos += 1
