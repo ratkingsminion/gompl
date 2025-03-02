@@ -4,6 +4,7 @@ extends RefCounted
 ## A simple interpreted scripting language for Godot
 ## Based on https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-
 ## and https://jayconrod.com/posts/65/how-to-build-a-parser-by-hand
+## and https://craftinginterpreters.com/parsing-expressions.html
 
 static var undefined: _Undefined = _Undefined.new() # only use this
 	
@@ -242,7 +243,8 @@ class Expr:
 		func _init(c: Expr, t: Expr, f: Expr) -> void: cond = c; true_expr = t; false_expr = f
 		func _to_string() -> String: return str("If(", cond, ", ", true_expr, ", ", false_expr, ")")
 		func eval(gompl: Gompl, env: Dictionary):
-			if cond.eval(gompl, env): return true_expr.eval(gompl, env)
+			var c = cond.eval(gompl, env)
+			if c and c is not _Undefined: return true_expr.eval(gompl, env)
 			return false_expr.eval(gompl, env) if false_expr else Gompl.undefined
 	class While extends Expr:
 		var cond: Expr

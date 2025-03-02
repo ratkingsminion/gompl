@@ -57,9 +57,9 @@ func _ready() -> void:
 	res = g.eval('
 		y = if 1 + 1 == 3 then "y is undefined because this if-expression returns null" end
 		if y == undefined then print("y is not defined") end
-		y // will return <null>
+		y // will return undefined
 	')
-	print("RESULT 4: ", res) # null
+	print("RESULT 4: ", res) # undefined
 	
 	# test skip and stop
 	res = g.eval('
