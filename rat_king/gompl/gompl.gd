@@ -35,7 +35,7 @@ const _TOKEN_TERM: Array[String] = [ "-", "+" ]
 const _TOKEN_FACTOR: Array[String] = [ "/", "*" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "while", "do", "end", "stop", "skip" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
@@ -237,15 +237,17 @@ class Expr:
 		func eval(_gompl: Gompl, env: Dictionary):
 			return env[name] if env.has(name) else Gompl.undefined
 	class If extends Expr:
-		var cond: Expr
-		var true_expr: Expr
-		var false_expr: Expr
-		func _init(c: Expr, t: Expr, f: Expr) -> void: cond = c; true_expr = t; false_expr = f
-		func _to_string() -> String: return str("If(", cond, ", ", true_expr, ", ", false_expr, ")")
+		var conds: Array[Expr]
+		var exprs: Array[Expr]
+		func _init(c: Array[Expr], e: Array[Expr]) -> void: conds = c; exprs = e
+		func _to_string() -> String: return str("If(", conds, ", ", exprs, ")")
 		func eval(gompl: Gompl, env: Dictionary):
-			var c = cond.eval(gompl, env)
-			if c and c is not _Undefined: return true_expr.eval(gompl, env)
-			return false_expr.eval(gompl, env) if false_expr else Gompl.undefined
+			var i := 0
+			while i < conds.size():
+				var c = conds[i].eval(gompl, env)
+				if c and c is not _Undefined: return exprs[i].eval(gompl, env)
+				i = i + 1
+			return exprs[i].eval(gompl, env) if i < exprs.size() else Gompl.undefined
 	class While extends Expr:
 		var cond: Expr
 		var expr: Expr
@@ -419,25 +421,31 @@ class Parser:
 					elif tokens[pos][0] != ")": _set_err("Expect ')' after expression")
 					else: res = Expr.Grouping.new(expr)
 				elif tokens[pos][0] == "if":
-					pos += 1
-					var cond := expression()
-					if not cond: _set_err("Expect condition after 'if'")
-					elif pos >= tokens.size(): _set_err("Expect 'then' after 'if' condition, early EOF")
-					elif tokens[pos][0] != "then": _set_err("Expect 'then' after 'if' condition")
-					else:
+					var conds: Array[Expr]
+					var exprs: Array[Expr]
+					var expected := "if"
+					while tokens[pos][0] == expected:
 						pos += 1
-						var body_true := expressions()
-						if not body_true: _set_err("Expect body after 'then'")
-						elif pos >= tokens.size(): _set_err("Expect 'end' or 'else' after if-body, early EOF")
-						elif tokens[pos][0] != "else" and tokens[pos][0] != "end": _set_err("Expect 'end' or 'else' after if-body")
-						elif tokens[pos][0] == "end": res = Expr.If.new(cond, body_true, null)
-						elif tokens[pos][0] == "else":
-							pos += 1
-							var body_false := expressions()
-							if not body_false: _set_err("Expect body after 'else'")
-							elif pos >= tokens.size() : _set_err("Expect 'end' after if-body, early EOF")
-							elif tokens[pos][0] != "end": _set_err("Expect 'end' after if-body")
-							else: res = Expr.If.new(cond, body_true, body_false)
+						var cond := expression()
+						if not cond: _set_err("Expect condition after '" + expected + "'"); break
+						elif pos >= tokens.size(): _set_err("Expect 'then' after '" + expected + "' condition, early EOF"); break
+						elif tokens[pos][0] != "then": _set_err("Expect 'then' after '" + expected + "' condition"); break
+						conds.append(cond)
+						pos += 1
+						var body := expressions()
+						if not body: _set_err("Expect body after 'then'"); break
+						elif pos >= tokens.size(): _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body, early EOF"); break
+						elif tokens[pos][0] != "else" and tokens[pos][0] != "elif" and tokens[pos][0] != "end": _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body"); break
+						exprs.append(body)
+						expected = "elif"
+					if tokens[pos][0] == "else":
+						pos += 1
+						var body_else := expressions()
+						if not body_else: _set_err("Expect body after 'else'")
+						elif pos >= tokens.size() : _set_err("Expect 'end' after else-body, early EOF")
+						elif tokens[pos][0] != "end": _set_err("Expect 'end' after else-body")
+						else: exprs.append(body_else)
+					if not gompl.err: res = Expr.If.new(conds, exprs)
 				elif tokens[pos][0] == "while":
 					pos += 1
 					var cond := expression()

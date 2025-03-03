@@ -30,7 +30,7 @@ func _ready() -> void:
 	
 	# test factorial code
 	res = g.eval('
-		n = 5 // no ; needed
+		n = 5 // no ; needed, or even line-breaks
 		p = 1
 		while n > 0 do
 		  p = p * n
@@ -53,7 +53,7 @@ func _ready() -> void:
 	print("RESULT 3: ", res) # true
 	print("-> WITH ENVIRONMENT: ", env)
 	
-	# test undefined (== null in GDScript)
+	# test undefined (similar to null in GDScript)
 	res = g.eval('
 		y = if 1 + 1 == 3 then "y is undefined because this if-expression returns null" end
 		if y == undefined then print("y is not defined") end
@@ -61,13 +61,17 @@ func _ready() -> void:
 	')
 	print("RESULT 4: ", res) # undefined
 	
-	# test skip and stop
+	# test conditions, skip and stop
 	res = g.eval('
 		x = -1
 		while x < 10 do
 			x = x + 1
-			if x == 3 then skip end
-			if x == 6 then stop end
+			if x == 3 then
+				print("no three for thee")
+				skip
+			elif x == 6 then
+				stop
+			end
 			print(x)
 		end
 		x
