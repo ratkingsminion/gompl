@@ -12,7 +12,7 @@ For "break" and "continue" use `stop` and `skip` in `while`-loops.
 
 Use `elif`-`then` if you want an `if`-`then` with more than one condition.
 
-Gompl also supports negative numbers (IMP didn't), strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl.
+Gompl also supports negative numbers (IMP didn't), floats, strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl.
 
 Example:
 
@@ -36,7 +36,6 @@ func _ready() -> void:
 Limitations:
 
 * Sub-par error handling/messages (only shows current token, not line number)
-* Only integers for numbers
 * No functions
 * No arrays
 * All variables have global scope
