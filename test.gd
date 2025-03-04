@@ -78,6 +78,14 @@ func _ready() -> void:
 	')
 	print("RESULT 5: ", res) # 6
 	
+	# test string stuff
+	res = g.eval('
+		print("hello world" - "lo ") // subtracting removes the word(s)
+		print("hello " * 3 + "world") // multiplying repeats the word
+		"number test: " + 3.141 + " " + 1000
+	')
+	print("RESULT 6: ", res) # number test: 3.141 1000
+	
 	# Wait a bit before closing
 	for i in 20: await get_tree().process_frame
 	get_tree().quit()

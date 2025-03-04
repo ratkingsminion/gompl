@@ -11,6 +11,7 @@ static var undefined: _Undefined = _Undefined.new() # only use this
 const _IGNORE := "IGN"
 const _RESERVED := "RSV"
 const _INT := "INT"
+const _FLOAT := "FLT"
 const _STRING := "STR"
 const _UNDEFINED := "NIL"
 const _BOOL := "BOOL"
@@ -23,6 +24,7 @@ const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"<=", _RESERVED, r"<", _RESERVED, r">=", _RESERVED, r">", _RESERVED,
 	r"==", _RESERVED, r"!=", _RESERVED,
 	r"\=", _RESERVED, r"\(", _RESERVED, r"\)", _RESERVED,
+	r"[0-9]+\.[0-9]*", _FLOAT,
 	r"[0-9]+", _INT,
 	r"\"(.*?(?<!\\))\"", _STRING,
 	r"[A-Za-z_][A-Za-z0-9_]*", _ID
@@ -174,8 +176,8 @@ class Expr:
 					if l is String and r is String: return l.replace(r, "")
 					return l - r
 				"*":
-					if l is String and r is int: return l.repeat(r)
-					elif l is int and r is String: return r.repeat(l)
+					if l is String and (r is int or r is float): return l.repeat(r)
+					elif (l is int or l is float) and r is String: return r.repeat(l)
 					return l * r
 				"/":
 					if r == 0: gompl._set_err("Division by zero"); return Gompl.undefined
@@ -394,6 +396,7 @@ class Parser:
 		match tokens[pos][1]:
 			_UNDEFINED: res = Gompl.undefined
 			_BOOL: res = Expr.Literal.new(tokens[pos][0] == "true")
+			_FLOAT: res = Expr.Literal.new(float(tokens[pos][0]))
 			_INT: res = Expr.Literal.new(int(tokens[pos][0]))
 			_STRING: res = Expr.Literal.new(tokens[pos][0].substr(1, tokens[pos][0].length() - 2).c_unescape()) # removing the quotation marks
 			_ID:
