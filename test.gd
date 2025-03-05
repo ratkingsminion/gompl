@@ -19,7 +19,7 @@ func _ready() -> void:
 	
 	# test calling GDScript functions
 	res = g.eval('
-		ifif = 2 // keywords can be part of the identifier names
+		ifif = 2 + 2 * 3 // keywords can be part of the identifier names
 		func_1()
 		func_2("foo", 2,)
 		// functions need to have the correct parameter count and types,
@@ -27,6 +27,7 @@ func _ready() -> void:
 		// (instead of just Gompl errors)
 	')
 	print("RESULT 1: ", res) # "return value from func_2"
+	assert(res == "return value from func_2", "Result 1 wrong")
 	
 	# test factorial code
 	res = g.eval('
@@ -39,6 +40,7 @@ func _ready() -> void:
 		p // the last expression is the result of the eval() call
 	')
 	print("RESULT 2: ", res) # 120
+	assert(res == 120, "Result 2 wrong")
 	
 	# test custom env Dictionary, and some assignments
 	var env = {}
@@ -52,6 +54,7 @@ func _ready() -> void:
 	', env)
 	print("RESULT 3: ", res) # true
 	print("-> WITH ENVIRONMENT: ", env)
+	assert(res == true, "Result 3 wrong")
 	
 	# test undefined (similar to null in GDScript)
 	res = g.eval('
@@ -60,6 +63,7 @@ func _ready() -> void:
 		y // will return undefined
 	')
 	print("RESULT 4: ", res) # undefined
+	assert(res == Gompl.undefined, "Result 4 wrong")
 	
 	# test conditions, skip and stop
 	res = g.eval('
@@ -77,6 +81,7 @@ func _ready() -> void:
 		x
 	')
 	print("RESULT 5: ", res) # 6
+	assert(res == 6, "Result 5 wrong")
 	
 	# test string stuff
 	res = g.eval('
@@ -85,6 +90,7 @@ func _ready() -> void:
 		"number test: " + 3.141 + " " + 1000
 	')
 	print("RESULT 6: ", res) # number test: 3.141 1000
+	assert(res == "number test: 3.141 1000", "Result 6 wrong")
 	
 	# Wait a bit before closing
 	for i in 20: await get_tree().process_frame
