@@ -160,7 +160,7 @@ class Expr:
 	func eval(_gompl: Gompl, _env: Dictionary):
 		_gompl._call_count += 1
 		_gompl._call_stack.push_back(self)
-		print("call ", _gompl._call_count, ") ", _idx, " s:", _gompl._call_stack.size())
+		#print("call ", _gompl._call_count, ") ", _idx, " s:", _gompl._call_stack.size())
 		var res = _eval(_gompl, _env)
 		_gompl._call_stack.pop_back()
 		return res
