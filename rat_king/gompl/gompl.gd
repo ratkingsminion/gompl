@@ -90,9 +90,10 @@ func compile(ast: Expr) -> Array[Array]:
 	if debug_printing and it: print("INSTRUCTIONS: ", it)
 	return it
 
+## Step 4 - iterate over the array of instructions, using it as a lower level language
 ## env is a Dictionary that contains all the variables assigned in the code
 ## If you don't provide env, a temporary one will be created
-## If you provide a state Dictionary, it can be re-sed to continue the execution
+## If you provide a state Dictionary, it can be re-used to continue the execution after it was interrupted
 func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, state = null):
 	err = ""
 	if env == null: env = {} if state == null else state.get("env", {})
@@ -125,7 +126,7 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 				elif it[pos][1] == "!=":
 					stack.push_back(typeof(l) != typeof(r) or l != r)
 				elif l is _Undefined or r is _Undefined:
-					_set_err("Can't use undefined variable in binary op")
+					_set_err("Can't use undefined variable in binary op '" + it[pos][1] + "'")
 					stack.push_back(Gompl.undefined)
 				elif it[pos][1] in [ "+", "-", "*", "/", "%" ]:
 					#print(">>> ", l, " ", it[pos][1], " ", r)
@@ -135,7 +136,7 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 							else: stack.push_back(l + r)
 						"-":
 							if l is String: stack.push_back(l.replace(str(r), ""))
-							elif r is String: _set_err("Incompatible types in binary op"); stack.push_back(Gompl.undefined)
+							elif r is String: _set_err("Incompatible types in binary op '" + it[pos][1] + "'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l - r)
 						"*":
 							if l is String and (r is int or r is float): stack.push_back(l.repeat(r))
@@ -152,7 +153,7 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 							else: stack.push_back(l % r)
 				else:
 					if (l is String and r is not String) or (r is String and l is not String):
-						_set_err("Incompatible types for binary op"); stack.push_back(Gompl.undefined)
+						_set_err("Incompatible types for binary op '" + it[pos][1] + "'"); stack.push_back(Gompl.undefined)
 					else:
 						match it[pos][1]:
 							"<": stack.push_back(l < r)
@@ -163,15 +164,19 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 				var r = stack.pop_back()
 				match it[pos][1]:
 					"not":
-						if r is not bool: _set_err("Incompatible types for unary op"); stack.push_back(Gompl.undefined)
+						if r is not bool: _set_err("Incompatible types for unary op 'not'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(not r)
 					"-":
-						if r is not int and r is not float: _set_err("Incompatible types for unary op"); stack.push_back(Gompl.undefined)
+						if r is not int and r is not float: _set_err("Incompatible types for unary op '-'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(-r)
 			"assign":
 				var res = stack.pop_back()
-				env[it[pos][1]] = res
-				stack.push_back(res)
+				if res == null or res is _Undefined:
+					env.erase(it[pos][1])
+					stack.push_back(undefined)
+				else:
+					env[it[pos][1]] = res
+					stack.push_back(res)
 			"literal":
 				stack.push_back(it[pos][1])
 			"pop":
@@ -211,9 +216,9 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 		state["steps"] = step
 		return null
 	
-	if debug_printing and stack.back(): print("RESULT: ", stack.back())
+	if debug_printing and stack: print("RESULT: ", stack.back())
 	if debug_printing: print("ENVIRONMENT: ", env)
-	return stack.back()
+	return stack.back() if stack else null
 
 ###
 
@@ -273,7 +278,9 @@ class Expr:
 		var right: Expr
 		func _init(l: Expr, o: String, r: Expr) -> void: left = l; op = o; right = r
 		func _to_string() -> String: return str("Binary(", left, ", '", op, "', ", right, ")")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
+			if left == null: gompl._set_err(str(self, ": missing left operand")); return
+			if right == null: gompl._set_err(str(self, ": missing right operand")); return
 			if op == "and" or op == "or":
 				left.compile(gompl, it, scope_stack)
 				var d = [ "bin_logic", op ]; it.append(d)
@@ -289,7 +296,7 @@ class Expr:
 		var right: Expr
 		func _init(o: String, r: Expr) -> void: op = o; right = r
 		func _to_string() -> String: return str("Unary('", op, "', ", right, ")")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			right.compile(gompl, it, scope_stack)
 			it.append([ "unary", op ])
 	class Assignment extends Expr:
@@ -298,7 +305,7 @@ class Expr:
 		var right: Expr
 		func _init(l: Identifier, o: String, r: Expr) -> void: left = l; op = o; right = r
 		func _to_string() -> String: return str("Assignment(", left, ", '", op, "', ", right, ")")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			right.compile(gompl, it, scope_stack)
 			it.append([ "assign", left.name ])
 	class Literal extends Expr:
@@ -311,7 +318,7 @@ class Expr:
 		var exprs: Array[Expr]
 		func _init(a: Array[Expr]) -> void: exprs = a
 		func _to_string() -> String: return str("List(", exprs.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			for i: int in exprs.size():
 				exprs[i].compile(gompl, it, scope_stack)
 				if i != exprs.size() - 1: it.append([ "pop" ])
@@ -326,7 +333,7 @@ class Expr:
 		var bodies: Array[Expr]
 		func _init(c: Array[Expr], b: Array[Expr]) -> void: conds = c; bodies = b
 		func _to_string() -> String: return str("If(", conds, ", ", bodies.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			var check: Array
 			var jumps: Array[Array]
 			for i: int in conds.size():
@@ -345,7 +352,7 @@ class Expr:
 		var body: Expr
 		func _init(c: Expr, b: Expr) -> void: cond = c; body = b
 		func _to_string() -> String: return str("While(", cond, ", ", body, ")")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			var start_pos := it.size()
 			var scope := Scope.new(start_pos)
 			scope_stack.push_back(scope)
@@ -360,7 +367,7 @@ class Expr:
 		var op: String
 		func _init(o: String) -> void: op = o
 		func _to_string() -> String: return str("Stop()")
-		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			if op == "interrupt":
 				it.append([ "interrupt" ])
 			elif not scope_stack:

@@ -1,0 +1,33 @@
+[gd_scene load_steps=3 format=3 uid="uid://dj75gqru45j7p"]
+
+[ext_resource type="Texture2D" uid="uid://doy0pjxrug361" path="res://icon.svg" id="1_yhsjk"]
+[ext_resource type="Script" path="res://live.gd" id="2_o8brj"]
+
+[node name="Live" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="." node_paths=PackedStringArray("code_editor", "code_compile", "code_error")]
+position = Vector2(600, 320)
+texture = ExtResource("1_yhsjk")
+script = ExtResource("2_o8brj")
+code_editor = NodePath("../Code TextEdit")
+code_compile = NodePath("../Compile Button")
+code_error = NodePath("../Error Label")
+
+[node name="Code TextEdit" type="TextEdit" parent="."]
+offset_left = 12.0
+offset_top = 9.0
+offset_right = 357.0
+offset_bottom = 310.0
+
+[node name="Compile Button" type="Button" parent="."]
+offset_left = 12.0
+offset_top = 315.0
+offset_right = 352.0
+offset_bottom = 350.0
+text = "Compile"
+
+[node name="Error Label" type="Label" parent="."]
+offset_left = 15.0
+offset_top = 357.0
+offset_right = 356.0
+offset_bottom = 424.0
