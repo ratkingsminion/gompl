@@ -208,6 +208,7 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 		state["stack"] = stack
 		state["pos"] = pos
 		state["env"] = env
+		state["steps"] = step
 		return null
 	
 	if debug_printing and stack.back(): print("RESULT: ", stack.back())
@@ -380,6 +381,9 @@ class Expr:
 		func compile(gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			if not gompl.target or not gompl.target.has_method(method):
 				gompl._set_err(str("FnCall('", method, "', ", params.size(), "): Can not call function '", method, "'"))
+				return
+			if params.size() > gompl.target.get_method_argument_count(method):
+				gompl._set_err(str("FnCall('", method, "', ", params.size(), "): Too many parameters for function '", method, "'"))
 				return
 			for i: int in range(params.size() -1, -1, -1):
 				params[i].compile(gompl, it,_scope_stack)

@@ -5,7 +5,7 @@ extends Node
 func func_1():
 	print("Function call test 1 - called a function without parameters")
 
-func func_2(a, b, c = "optional param"):
+func func_2(a, b, c := "optional param"):
 	prints("Function call test 2 -", a, b, c)
 	return "return value from func_2"
 
@@ -22,7 +22,7 @@ func _ready() -> void:
 	res = g.eval('
 		ifif = 2 + 2 * 3 // keywords can be part of the identifier names
 		func_1()
-		func_2("foo", 2,)
+		func_2("foo", ifif)
 		// functions need to have the correct parameter count and types,
 		// otherwise you get GDScript errors inside the Debugger
 		// (instead of just Gompl errors)
@@ -105,7 +105,7 @@ func _ready() -> void:
 				x = x + 1
 				if x > 100 then interrupt end // premature script exit
 			end', null, max_steps, state)
-		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", max_steps, " steps")
+		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
 	
 	# done, results in Output
