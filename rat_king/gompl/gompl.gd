@@ -18,7 +18,7 @@ const _BOOL := "BOOL"
 const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"[ \n\t]+", _IGNORE, r"#[^\n]*", _IGNORE, # whitespaces
-	r",", _RESERVED, r",", _RESERVED, # separator
+	r",", _RESERVED, # separator
 	r"\/\/[^\n]*", _IGNORE, # comments
 	r"\+", _RESERVED, r"-", _RESERVED, r"\*", _RESERVED, r"/", _RESERVED, r"\%", _RESERVED,
 	r"<=", _RESERVED, r"<", _RESERVED, r">=", _RESERVED, r">", _RESERVED,
@@ -36,7 +36,7 @@ const _TOKEN_TERM: Array[String] = [ "-", "+" ]
 const _TOKEN_FACTOR: Array[String] = [ "/", "*", "%" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
@@ -52,15 +52,14 @@ func _init(target_object: Object = null) -> void:
 ###
 
 ## env is a Dictionary that contains all the variables assigned in the code
-func eval(code: String, env = null):
+func eval(code: String, env = null, max_steps: int = 9223372036854775807, state = null):
 	var tokens := tokenize_code(code)
-	if tokens:
-		var ast := parse_tokens(tokens)
-		if ast:
-			var it: Array
-			ast.compile(self, it, [])
-			return run(it, env if env != null else {})
-	return null # some error happened
+	if not tokens: return null # some error happened
+	var ast := parse_tokens(tokens)
+	if not ast: return null # some error happened
+	var instructions := compile(ast)
+	if not instructions: return null # some error happened
+	return run(instructions, env, max_steps, state)
 
 ###
 
@@ -82,20 +81,29 @@ func parse_tokens(tokens: Array[Array]) -> Expr:
 	if debug_printing and ast: print("AST: ", ast)
 	return ast
 	
-## Step 3 - run the instructions, compiled via the AST
+## Step 3 - compile the AST to an arry of instructions, compiled via the AST
+func compile(ast: Expr) -> Array[Array]:
+	err = ""
+	var it: Array[Array]
+	ast.compile(self, it, [])
+	if err: printerr(err); return []
+	if debug_printing and it: print("INSTRUCTIONS: ", it)
+	return it
+
 ## env is a Dictionary that contains all the variables assigned in the code
 ## If you don't provide env, a temporary one will be created
-func run(it: Array, env: Dictionary):
+## If you provide a state Dictionary, it can be re-sed to continue the execution
+func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, state = null):
 	err = ""
-	if env == null: env = {}
+	if env == null: env = {} if state == null else state.get("env", {})
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
 	
-	if debug_printing and it: print("INSTRUCTIONS: ", it)
+	var step: int = 0
+	var stack: Array = [] if state == null else state.get("stack", [])
+	var pos: int = 0 if state == null else state.get("pos", 0)
 	
-	var stack: Array
-	var pos: int = 0
-	
-	while not err and pos < it.size():
+	var interrupted := false
+	while not err and pos < it.size() and not interrupted:
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
 		match it[pos][0]:
 			"undefined":
@@ -175,6 +183,8 @@ func run(it: Array, env: Dictionary):
 				else: stack.push_back(undefined); pos = it[pos][1] - 1
 			"jump":
 				pos = it[pos][1] - 1
+			"interrupt":
+				interrupted = true
 			"excall":
 				var res
 				if not it[pos][2]:
@@ -186,10 +196,20 @@ func run(it: Array, env: Dictionary):
 						args.append(arg if arg is not _Undefined else null)
 					res = target.callv(it[pos][1], args)
 				stack.push_back(res if res else undefined)
-					
+		
 		pos += 1
+		step += 1
+		if step >= max_steps:
+			interrupted = true
 	
 	if err: printerr(err); return null
+	
+	if interrupted and state != null:
+		state["stack"] = stack
+		state["pos"] = pos
+		state["env"] = env
+		return null
+	
 	if debug_printing and stack.back(): print("RESULT: ", stack.back())
 	if debug_printing: print("ENVIRONMENT: ", env)
 	return stack.back()
@@ -234,17 +254,15 @@ func _lex(code: String) -> Array[Array]:
 class _Undefined extends Expr:
 	func _init() -> void: pass
 	func _to_string() -> String: return "undefined"
-	func compile(_gompl: Gompl, it: Array, _scope_stack: Array[Scope]) -> void: it.append([ "undefined" ])
+	func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void: it.append([ "undefined" ])
 
 class Scope:
-	var scope: Expr
-	var flow_change: String
 	var start_pos: int
 	var stops: Array[Array]
-	func _init(s: Expr, p: int) -> void: scope = s; start_pos = p
+	func _init(p: int) -> void: start_pos = p
 
 class Expr:
-	func compile(_gompl: Gompl, _it: Array, _scope_stack: Array[Scope]) -> void:
+	func compile(_gompl: Gompl, _it: Array[Array],_scope_stack: Array[Scope]) -> void:
 		pass
 	
 	# TODO make the operations more robust for different types
@@ -254,24 +272,24 @@ class Expr:
 		var right: Expr
 		func _init(l: Expr, o: String, r: Expr) -> void: left = l; op = o; right = r
 		func _to_string() -> String: return str("Binary(", left, ", '", op, "', ", right, ")")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
 			if op == "and" or op == "or":
-				left.compile(gompl, it,scope_stack)
+				left.compile(gompl, it, scope_stack)
 				var d = [ "bin_logic", op ]; it.append(d)
-				right.compile(gompl, it,scope_stack)
+				right.compile(gompl, it, scope_stack)
 				it.append([ "bin_logic_end" ])
 				d.append(it.size())
 			else:
-				right.compile(gompl, it,scope_stack)
-				left.compile(gompl, it,scope_stack)
+				right.compile(gompl, it, scope_stack)
+				left.compile(gompl, it, scope_stack)
 				it.append([ "bin", op ])
 	class Unary extends Expr:
 		var op: String
 		var right: Expr
 		func _init(o: String, r: Expr) -> void: op = o; right = r
 		func _to_string() -> String: return str("Unary('", op, "', ", right, ")")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
-			right.compile(gompl, it,scope_stack)
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+			right.compile(gompl, it, scope_stack)
 			it.append([ "unary", op ])
 	class Assignment extends Expr:
 		var left: Identifier
@@ -279,46 +297,46 @@ class Expr:
 		var right: Expr
 		func _init(l: Identifier, o: String, r: Expr) -> void: left = l; op = o; right = r
 		func _to_string() -> String: return str("Assignment(", left, ", '", op, "', ", right, ")")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
-			right.compile(gompl, it,scope_stack)
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+			right.compile(gompl, it, scope_stack)
 			it.append([ "assign", left.name ])
 	class Literal extends Expr:
 		var lit
 		func _init(l) -> void: lit = l
 		func _to_string() -> String: return str("Literal(", lit, ", ", type_string(typeof(lit)), ")")
-		func compile(_gompl: Gompl, it: Array, _scope_stack: Array[Scope]) -> void:
+		func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			it.append([ "literal", lit ])
 	class List extends Expr:
 		var exprs: Array[Expr]
 		func _init(a: Array[Expr]) -> void: exprs = a
 		func _to_string() -> String: return str("List(", exprs.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
 			for i: int in exprs.size():
-				exprs[i].compile(gompl, it,scope_stack)
+				exprs[i].compile(gompl, it, scope_stack)
 				if i != exprs.size() - 1: it.append([ "pop" ])
 	class Identifier extends Expr:
 		var name: String
 		func _init(n: String) -> void: name = n
 		func _to_string() -> String: return str("Identifier('", name, "')")
-		func compile(_gompl: Gompl, it: Array, _scope_stack: Array[Scope]) -> void:
+		func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			it.append([ "id", name ])
 	class If extends Expr:
 		var conds: Array[Expr]
 		var bodies: Array[Expr]
 		func _init(c: Array[Expr], b: Array[Expr]) -> void: conds = c; bodies = b
 		func _to_string() -> String: return str("If(", conds, ", ", bodies.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
 			var check: Array
 			var jumps: Array[Array]
 			for i: int in conds.size():
 				if check: check.append(it.size())
-				conds[i].compile(gompl, it,scope_stack)
+				conds[i].compile(gompl, it, scope_stack)
 				check = [ "check" ]; it.append(check)
-				bodies[i].compile(gompl, it,scope_stack)
+				bodies[i].compile(gompl, it, scope_stack)
 				jumps.append([ "jump" ]); it.append(jumps[-1])
 			check.append(it.size())
 			if bodies.size() > conds.size():
-				bodies[-1].compile(gompl, it,scope_stack)
+				bodies[-1].compile(gompl, it, scope_stack)
 			for j in jumps:
 				j.append(it.size())
 	class While extends Expr:
@@ -326,13 +344,13 @@ class Expr:
 		var body: Expr
 		func _init(c: Expr, b: Expr) -> void: cond = c; body = b
 		func _to_string() -> String: return str("While(", cond, ", ", body, ")")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
 			var start_pos := it.size()
-			var scope := Scope.new(self, start_pos)
+			var scope := Scope.new(start_pos)
 			scope_stack.push_back(scope)
-			cond.compile(gompl, it,scope_stack)
+			cond.compile(gompl, it, scope_stack)
 			var check = [ "check" ]; it.append(check)
-			body.compile(gompl, it,scope_stack)
+			body.compile(gompl, it, scope_stack)
 			it.append([ "jump", start_pos])
 			check.append(it.size())
 			for s: Array in scope.stops: s.append(it.size()) # jump targets of stops
@@ -341,24 +359,25 @@ class Expr:
 		var op: String
 		func _init(o: String) -> void: op = o
 		func _to_string() -> String: return str("Stop()")
-		func compile(gompl: Gompl, it: Array, scope_stack: Array[Scope]) -> void:
-			if not scope_stack:
+		func compile(gompl: Gompl, it: Array[Array],scope_stack: Array[Scope]) -> void:
+			if op == "interrupt":
+				it.append([ "interrupt" ])
+			elif not scope_stack:
 				gompl._set_err(str("Unexpected '", op, "'"))
 			else: 
-				var scope: Scope = scope_stack.back()
 				var jump = [ "jump" ]
 				if op == "stop":
 					it.append([ "undefined" ])
-					scope.stops.append(jump)
+					scope_stack.back().stops.append(jump)
 				elif op == "skip":
-					jump.append(scope.start_pos)
+					jump.append(scope_stack.back().start_pos)
 				it.append(jump)
 	class FnCall extends Expr:
 		var method: String
 		var params: Array[Expr]
 		func _init(m: String, p: Array[Expr]) -> void: method = m; params = p
 		func _to_string() -> String: return str("FnCall('", method, "', ", params.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array, _scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			if not gompl.target or not gompl.target.has_method(method):
 				gompl._set_err(str("FnCall('", method, "', ", params.size(), "): Can not call function '", method, "'"))
 				return
@@ -544,6 +563,8 @@ class Parser:
 					res = Expr.FlowControl.new("stop")
 				elif tokens[pos][0] == "skip":
 					res = Expr.FlowControl.new("skip")
+				elif tokens[pos][0] == "interrupt":
+					res = Expr.FlowControl.new("interrupt")
 				else:
 					pass # do nothing, otherwise expressions() always spits out an error
 		if res: pos += 1

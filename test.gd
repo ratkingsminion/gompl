@@ -93,6 +93,20 @@ func _ready() -> void:
 	print("RESULT 6: ", res) # number test: 3.141 1000
 	assert(res == "number test: 3.141 1000", "Result 6 wrong")
 	
-	# Wait a bit before closing
-	for i in 20: await get_tree().process_frame
+	# test endless loop and max steps of code execution
+	var max_steps := 200
+	var state = {}
+	for i in 10:
+		# this compiles the code again on every step, which is wasteful
+		# better use g.run() instead
+		g.eval('
+			x = 0
+			while true do
+				x = x + 1
+				if x > 100 then interrupt end // premature script exit
+			end', null, max_steps, state)
+		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", max_steps, " steps")
+		await get_tree().process_frame
+	
+	# done, results in Output
 	get_tree().quit()
