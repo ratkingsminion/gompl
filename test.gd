@@ -9,7 +9,8 @@ func func_2(a, b, c = "optional param"):
 	prints("Function call test 2 -", a, b, c)
 	return "return value from func_2"
 
-func print(p): print(p)
+func print(p):
+	print("Script prints '", p, "'")
 
 ###
 
