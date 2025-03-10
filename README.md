@@ -54,10 +54,10 @@ No semicolons or linebreaks are necessary.
 
 Gompl uses `=` for assignment and `==` for comparison.
 
+Instead of "break" and "continue" use `stop` and `skip` in `while` loops.
+
 Everything is an expression, so you can do things like `x = if y != 5 then 0 else 10 end`. Be aware that in some cases the result can be `undefined`, e.g. when the `if` condition is false and there's no `else` clause. Another case is the result of a `while` loop that was stopped via `stop`.
 
-Instead of "break" and "continue" use `stop` and `skip` in `while`-loops.
-
-Gompl natively supports integers, floats, strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl.
+Gompl natively supports integers, floats, bools, strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl.
 
 Using `interrupt` will exit the script, but when providing a state `Dictionary` you can continue the execution. It's also possible to limit the amount of execution steps.
