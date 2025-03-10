@@ -78,7 +78,7 @@ func parse_tokens(tokens: Array[Array]) -> Expr:
 	if err: printerr(err); return null
 	var ast := parser.parse()
 	if err: printerr(err); return null
-	if debug_printing and ast: print("AST: ", ast)
+	if debug_printing: print("AST: ", ast)
 	return ast
 	
 ## Step 3 - compile the AST to an arry of instructions, compiled via the AST
@@ -136,19 +136,19 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 							else: stack.push_back(l + r)
 						"-":
 							if l is String: stack.push_back(l.replace(str(r), ""))
-							elif r is String: _set_err("Incompatible types in binary op '" + it[pos][1] + "'"); stack.push_back(Gompl.undefined)
+							elif r is String: _set_err("Incompatible types in binary op '-'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l - r)
 						"*":
 							if l is String and (r is int or r is float): stack.push_back(l.repeat(r))
 							elif (l is int or l is float) and r is String: stack.push_back(r.repeat(l))
-							elif r is String and l is String: _set_err("Incompatible types in binary op"); stack.push_back(Gompl.undefined)
+							elif r is String and l is String: _set_err("Incompatible types in binary op '*'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l * r)
 						"/":
-							if r is String or l is String: _set_err("Incompatible types in binary op"); stack.push_back(Gompl.undefined)
+							if r is String or l is String: _set_err("Incompatible types in binary op '/'"); stack.push_back(Gompl.undefined)
 							elif r == 0: _set_err("Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l / r)
 						"%":
-							if r is String or l is String: _set_err("Incompatible types in binary op"); stack.push_back(Gompl.undefined)
+							if r is String or l is String: _set_err("Incompatible types in binary op '%'"); stack.push_back(Gompl.undefined)
 							elif r == 0: _set_err("Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l % r)
 				else:
@@ -222,9 +222,9 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 
 ###
 
-func _set_err(e: String, overwrite := false) -> void:
+func _set_err(e, overwrite := false) -> void:
 	if err and not overwrite: return
-	err = str("Gompl: ", e)
+	err = str(e)
 
 ### LEXER
 
@@ -232,6 +232,7 @@ func _lex(code: String) -> Array[Array]:
 	var pos := 0
 	var tokens: Array[Array] = []
 	var reg := RegEx.new()
+	var line := 1
 	while pos < code.length():
 		var res: RegExMatch = null
 		var tag: String
@@ -240,19 +241,21 @@ func _lex(code: String) -> Array[Array]:
 			res = reg.search(code, pos)
 			if res and res.get_start() == pos:
 				tag = _TOKEN_EXPRESSIONS[tidx + 1]
-				if tag == _IGNORE: break
 				var value := res.get_string()
+				if tag == _IGNORE:
+					line += value.count("\n")
+					break
 				if tag == _ID:
 					if value in _TOKEN_KEYWORDS: tag = _RESERVED
 					elif value in _TOKEN_BOOLS: tag = _BOOL
 					elif value in _TOKEN_UNDEFINED: tag = _UNDEFINED
-				var token: Array[String] = [ value, tag ]
+				var token: Array = [ value, tag, line ]
 				tokens.append(token)
 				break
 			else:
 				res = null
 		if res: pos = res.get_end()
-		else: _set_err(str("Illegal character: ", code[pos], " at token ", pos)); return []
+		else: _set_err(str("[Lexer] [Line ", line, "] Found illegal character '", code[pos], "' (token ", pos, ")")); return []
 	return tokens
 
 ### EXPRESSIONS
@@ -268,6 +271,15 @@ class Scope:
 	func _init(p: int) -> void: start_pos = p
 
 class Expr:
+	var _line: int
+	
+	func _set_err(gompl: Gompl, e: String) -> void:
+		var error := str("[Compiler] [Line ", _line, "] ", e)
+		gompl._set_err(error, false)
+		
+	func _init(l: int) -> void:
+		_line = l
+	
 	func compile(_gompl: Gompl, _it: Array[Array],_scope_stack: Array[Scope]) -> void:
 		pass
 	
@@ -276,11 +288,11 @@ class Expr:
 		var left: Expr
 		var op: String
 		var right: Expr
-		func _init(l: Expr, o: String, r: Expr) -> void: left = l; op = o; right = r
+		func _init(ln: int, l: Expr, o: String, r: Expr) -> void: super(ln); left = l; op = o; right = r
 		func _to_string() -> String: return str("Binary(", left, ", '", op, "', ", right, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
-			if left == null: gompl._set_err(str(self, ": missing left operand")); return
-			if right == null: gompl._set_err(str(self, ": missing right operand")); return
+			if left == null: _set_err(gompl, str("Binary op '", op, "' missing left operand")); return
+			if right == null: _set_err(gompl, str("Binary op '", op, "' missing right operand")); return
 			if op == "and" or op == "or":
 				left.compile(gompl, it, scope_stack)
 				var d = [ "bin_logic", op ]; it.append(d)
@@ -294,7 +306,7 @@ class Expr:
 	class Unary extends Expr:
 		var op: String
 		var right: Expr
-		func _init(o: String, r: Expr) -> void: op = o; right = r
+		func _init(ln: int, o: String, r: Expr) -> void: super(ln); op = o; right = r
 		func _to_string() -> String: return str("Unary('", op, "', ", right, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			right.compile(gompl, it, scope_stack)
@@ -303,20 +315,20 @@ class Expr:
 		var left: Identifier
 		var op: String
 		var right: Expr
-		func _init(l: Identifier, o: String, r: Expr) -> void: left = l; op = o; right = r
+		func _init(ln: int, l: Identifier, o: String, r: Expr) -> void: super(ln); left = l; op = o; right = r
 		func _to_string() -> String: return str("Assignment(", left, ", '", op, "', ", right, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			right.compile(gompl, it, scope_stack)
 			it.append([ "assign", left.name ])
 	class Literal extends Expr:
 		var lit
-		func _init(l) -> void: lit = l
+		func _init(ln: int, l) -> void: super(ln); lit = l
 		func _to_string() -> String: return str("Literal(", lit, ", ", type_string(typeof(lit)), ")")
 		func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			it.append([ "literal", lit ])
 	class List extends Expr:
 		var exprs: Array[Expr]
-		func _init(a: Array[Expr]) -> void: exprs = a
+		func _init(ln: int, a: Array[Expr]) -> void: super(ln); exprs = a
 		func _to_string() -> String: return str("List(", exprs.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			for i: int in exprs.size():
@@ -324,14 +336,14 @@ class Expr:
 				if i != exprs.size() - 1: it.append([ "pop" ])
 	class Identifier extends Expr:
 		var name: String
-		func _init(n: String) -> void: name = n
+		func _init(ln: int, n: String) -> void: super(ln); name = n
 		func _to_string() -> String: return str("Identifier('", name, "')")
 		func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			it.append([ "id", name ])
 	class If extends Expr:
 		var conds: Array[Expr]
 		var bodies: Array[Expr]
-		func _init(c: Array[Expr], b: Array[Expr]) -> void: conds = c; bodies = b
+		func _init(ln: int, c: Array[Expr], b: Array[Expr]) -> void: super(ln); conds = c; bodies = b
 		func _to_string() -> String: return str("If(", conds, ", ", bodies.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			var check: Array
@@ -350,7 +362,7 @@ class Expr:
 	class While extends Expr:
 		var cond: Expr
 		var body: Expr
-		func _init(c: Expr, b: Expr) -> void: cond = c; body = b
+		func _init(ln: int, c: Expr, b: Expr) -> void: super(ln); cond = c; body = b
 		func _to_string() -> String: return str("While(", cond, ", ", body, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			var start_pos := it.size()
@@ -365,13 +377,13 @@ class Expr:
 			scope_stack.erase(scope)
 	class FlowControl extends Expr:
 		var op: String
-		func _init(o: String) -> void: op = o
+		func _init(ln: int, o: String) -> void: super(ln); op = o
 		func _to_string() -> String: return str("Stop()")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			if op == "interrupt":
 				it.append([ "interrupt" ])
 			elif not scope_stack:
-				gompl._set_err(str("Unexpected '", op, "'"))
+				_set_err(gompl, str("Unexpected '", op, "'"))
 			else: 
 				var jump = [ "jump" ]
 				if op == "stop":
@@ -383,14 +395,14 @@ class Expr:
 	class FnCall extends Expr:
 		var method: String
 		var params: Array[Expr]
-		func _init(m: String, p: Array[Expr]) -> void: method = m; params = p
+		func _init(ln: int, m: String, p: Array[Expr]) -> void: super(ln); method = m; params = p
 		func _to_string() -> String: return str("FnCall('", method, "', ", params.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
 			if not gompl.target or not gompl.target.has_method(method):
-				gompl._set_err(str("FnCall('", method, "', ", params.size(), "): Can not call function '", method, "'"))
+				_set_err(gompl, str("Can not call function '", method, "'"))
 				return
 			if params.size() > gompl.target.get_method_argument_count(method):
-				gompl._set_err(str("FnCall('", method, "', ", params.size(), "): Too many parameters for function '", method, "'"))
+				_set_err(gompl, str("Too many parameters for function '", method, "'"))
 				return
 			for i: int in range(params.size() -1, -1, -1):
 				params[i].compile(gompl, it,_scope_stack)
@@ -403,25 +415,27 @@ class Parser:
 	var tokens: Array[Array]
 	var exprs: Array[Expr]
 	var pos := 0
+	var _err_pos := 0
 	
 	func _init(g: Gompl, t: Array[Array]) -> void:
 		gompl = g
 		tokens = t
 	
 	func _set_err(e: String) -> void:
-		var error := str("PARSER[", pos, "] ", e)
+		var error := str("[Parser] [Line ", tokens[mini(_err_pos, tokens.size() - 1)][2], "] ", e)
 		gompl._set_err(error, false)
 	
 	func expressions() -> Expr:
 		var expr: Expr = null
 		var array: Array[Expr]
+		var ln: int = tokens[pos][2]
 		while pos < tokens.size():
 			var e := expression()
 			if gompl.err: return null
 			if not e: break
 			array.append(e)
 			expr = e
-		return Expr.List.new(array) if array.size() > 1 else expr
+		return Expr.List.new(ln, array) if array.size() > 1 else expr
 
 	func expression() -> Expr:
 		return assignment()
@@ -429,100 +443,119 @@ class Parser:
 	func assignment() -> Expr:
 		var expr := op_and()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ASSIGNMENT:
-			if expr is not Expr.Identifier: expr = null; break
+			if expr is not Expr.Identifier: _set_err("Assignment missing left side identifier"); return null
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := expression()
-			expr = Expr.Assignment.new(expr as Expr.Identifier, operator, right)
+			if not right: _set_err("Assignment missing right side expression"); return null
+			expr = Expr.Assignment.new(ln, expr as Expr.Identifier, operator, right)
 		return expr
 	
 	func op_and() -> Expr:
 		var expr := op_or()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_AND:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := op_or()
-			expr = Expr.Binary.new(expr, operator, right)
+			if not right: _set_err("Binary op 'and' has wrong right side"); return null
+			expr = Expr.Binary.new(ln, expr, operator, right)
 		return expr
 	
 	func op_or() -> Expr:
 		var expr := equality()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_OR:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := equality()
-			expr = Expr.Binary.new(expr, operator, right)
+			if not right: _set_err("Binary op 'or' has wrong right side"); return null
+			expr = Expr.Binary.new(ln, expr, operator, right)
 		return expr
 	
 	func equality() -> Expr:
 		var expr := comparison()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_EQUALITY:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := comparison()
-			expr = Expr.Binary.new(expr, operator, right)
+			if not right: _set_err("Binary op '" + operator + "' has wrong right side"); return null
+			expr = Expr.Binary.new(ln, expr, operator, right)
 		return expr
 	
 	func comparison() -> Expr:
 		var expr := term()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_COMPARISON:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := term()
-			expr = Expr.Binary.new(expr, operator, right)
+			if not right: _set_err("Binary op '" + operator + "' has wrong right side"); return null
+			expr = Expr.Binary.new(ln, expr, operator, right)
 		return expr
 	
 	func term() -> Expr:
 		var expr := factor()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_TERM:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := factor()
-			expr = Expr.Binary.new(expr, operator, right)
+			if not right: _set_err("Binary op '" + operator + "' has wrong right side"); return null
+			expr = Expr.Binary.new(ln, expr, operator, right)
 		return expr
 	
 	func factor() -> Expr:
 		var expr := unary()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_FACTOR:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := unary()
-			expr = Expr.Binary.new(expr, operator, right)
+			if not right: _set_err("Binary op '" + operator + "' has wrong right side"); return null
+			expr = Expr.Binary.new(ln, expr, operator, right)
 		return expr
 	
 	func unary() -> Expr:
 		if pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_UNARY:
+			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
 			pos += 1
 			var right := unary()
-			return Expr.Unary.new(operator, right)
+			if not right: _set_err("Unary op '" + operator + "' has wrong right side"); return null
+			return Expr.Unary.new(ln, operator, right)
 		return primary()
 
 	func primary() -> Expr:
 		if pos >= tokens.size(): return null
 		var res: Expr = null
+		_err_pos = pos
+		var ln: int = tokens[pos][2]
 		match tokens[pos][1]:
 			_UNDEFINED: res = Gompl.undefined
-			_BOOL: res = Expr.Literal.new(tokens[pos][0] == "true")
-			_FLOAT: res = Expr.Literal.new(float(tokens[pos][0]))
-			_INT: res = Expr.Literal.new(int(tokens[pos][0]))
-			_STRING: res = Expr.Literal.new(tokens[pos][0].substr(1, tokens[pos][0].length() - 2).c_unescape()) # removing the quotation marks
+			_BOOL: res = Expr.Literal.new(ln, tokens[pos][0] == "true")
+			_FLOAT: res = Expr.Literal.new(ln, float(tokens[pos][0]))
+			_INT: res = Expr.Literal.new(ln, int(tokens[pos][0]))
+			_STRING: res = Expr.Literal.new(ln, tokens[pos][0].substr(1, tokens[pos][0].length() - 2).c_unescape()) # removing the quotation marks
 			_ID:
 				var ident = tokens[pos][0]
 				if pos < tokens.size() - 1 and tokens[pos + 1][0] == "(":
 					pos += 2
 					var params: Array[Expr] = []
 					while pos < tokens.size() and tokens[pos][0] != ")":
-						var expr := expressions()
+						var expr := expression()
 						if not expr: _set_err("Expect expression inside params list"); break
 						params.append(expr)
 						if pos >= tokens.size(): _set_err("Expect ',' or ')' in params list, early EOF"); break
 						elif tokens[pos][0] == ",": pos += 1; continue
 						elif tokens[pos][0] != ")": _set_err("Expect ',' or ')' in params list"); break
 					if not gompl.err:
-						res = Expr.FnCall.new(ident, params)
+						if pos >= tokens.size(): _set_err("Expect ',' or ')' in params list, early EOF")
+						else: res = Expr.FnCall.new(ln, ident, params)
 				else:
-					res = Expr.Identifier.new(ident)
+					res = Expr.Identifier.new(ln, ident)
 			_RESERVED:
 				if tokens[pos][0] == "(":
 					pos += 1
@@ -556,7 +589,7 @@ class Parser:
 						elif pos >= tokens.size() : _set_err("Expect 'end' after else-body, early EOF")
 						elif tokens[pos][0] != "end": _set_err("Expect 'end' after else-body")
 						else: bodies.append(body_else)
-					if not gompl.err: res = Expr.If.new(conds, bodies)
+					if not gompl.err: res = Expr.If.new(ln, conds, bodies)
 				elif tokens[pos][0] == "while":
 					pos += 1
 					var cond := expression()
@@ -569,13 +602,13 @@ class Parser:
 						if not body: _set_err("Expect body after 'do'")
 						elif pos >= tokens.size() : _set_err("Expect 'end' after while-body, early EOF")
 						elif tokens[pos][0] != "end": _set_err("Expect 'end' after while-body")
-						else: res = Expr.While.new(cond, body)
+						else: res = Expr.While.new(ln, cond, body)
 				elif tokens[pos][0] == "stop":
-					res = Expr.FlowControl.new("stop")
+					res = Expr.FlowControl.new(ln, "stop")
 				elif tokens[pos][0] == "skip":
-					res = Expr.FlowControl.new("skip")
+					res = Expr.FlowControl.new(ln, "skip")
 				elif tokens[pos][0] == "interrupt":
-					res = Expr.FlowControl.new("interrupt")
+					res = Expr.FlowControl.new(ln, "interrupt")
 				else:
 					pass # do nothing, otherwise expressions() always spits out an error
 		if res: pos += 1
