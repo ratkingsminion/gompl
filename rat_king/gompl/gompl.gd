@@ -52,7 +52,7 @@ func _init(target_object: Object = null) -> void:
 ###
 
 ## env is a Dictionary that contains all the variables assigned in the code
-func eval(code: String, env = null, max_steps: int = 9223372036854775807, state = null):
+func eval(code: String, env = null, max_steps: int = 9223372036854775800, state = null):
 	var tokens := tokenize_code(code)
 	if not tokens: return null # some error happened
 	var ast := parse_tokens(tokens)
@@ -94,7 +94,7 @@ func compile(ast: Expr) -> Array[Array]:
 ## env is a Dictionary that contains all the variables assigned in the code
 ## If you don't provide env, a temporary one will be created
 ## If you provide a state Dictionary, it can be re-used to continue the execution after it was interrupted
-func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, state = null):
+func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, state = null):
 	err = ""
 	if env == null: env = {} if state == null else state.get("env", {})
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
@@ -106,101 +106,101 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 	var interrupted := false
 	while not err and pos < it.size() and not interrupted:
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
-		match it[pos][0]:
+		match it[pos][1]:
 			"undefined":
-				stack.push_back(undefined)
+				stack.push_back(Gompl.undefined)
 			"bin_logic":
 				var l = stack.pop_back()
-				if it[pos][1] == "and":
-					if not l or l is _Undefined: stack.push_back(false); pos = it[pos][2] - 1
-				elif it[pos][1] == "or":
-					if l and l is not _Undefined: stack.push_back(true); pos = it[pos][2] - 1
+				if it[pos][2] == "and":
+					if not l or l is _Undefined: stack.push_back(false); pos = it[pos][3] - 1
+				elif it[pos][2] == "or":
+					if l and l is not _Undefined: stack.push_back(true); pos = it[pos][3] - 1
 			"bin_logic_end":
 				var r = stack.pop_back()
 				stack.push_back(r or r is not _Undefined)
 			"bin":
 				var l = stack.pop_back()
 				var r = stack.pop_back()
-				if it[pos][1] == "==":
+				if it[pos][2] == "==":
 					stack.push_back(typeof(l) == typeof(r) and l == r)
-				elif it[pos][1] == "!=":
+				elif it[pos][2] == "!=":
 					stack.push_back(typeof(l) != typeof(r) or l != r)
 				elif l is _Undefined or r is _Undefined:
-					_set_err("Can't use undefined variable in binary op '" + it[pos][1] + "'")
+					_set_err_runtime(it[pos], "Can't use undefined variable in binary op '" + it[pos][2] + "'")
 					stack.push_back(Gompl.undefined)
-				elif it[pos][1] in [ "+", "-", "*", "/", "%" ]:
+				elif it[pos][2] in [ "+", "-", "*", "/", "%" ]:
 					#print(">>> ", l, " ", it[pos][1], " ", r)
-					match it[pos][1]:
+					match it[pos][2]:
 						"+":
 							if l is String or r is String: stack.push_back(str(l, r))
 							else: stack.push_back(l + r)
 						"-":
 							if l is String: stack.push_back(l.replace(str(r), ""))
-							elif r is String: _set_err("Incompatible types in binary op '-'"); stack.push_back(Gompl.undefined)
+							elif r is String: _set_err_runtime(it[pos], "Incompatible types in binary op '-'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l - r)
 						"*":
 							if l is String and (r is int or r is float): stack.push_back(l.repeat(r))
 							elif (l is int or l is float) and r is String: stack.push_back(r.repeat(l))
-							elif r is String and l is String: _set_err("Incompatible types in binary op '*'"); stack.push_back(Gompl.undefined)
+							elif r is String and l is String: _set_err_runtime(it[pos], "Incompatible types in binary op '*'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l * r)
 						"/":
-							if r is String or l is String: _set_err("Incompatible types in binary op '/'"); stack.push_back(Gompl.undefined)
-							elif r == 0: _set_err("Division by zero"); stack.push_back(Gompl.undefined)
+							if r is String or l is String: _set_err_runtime(it[pos], "Incompatible types in binary op '/'"); stack.push_back(Gompl.undefined)
+							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l / r)
 						"%":
-							if r is String or l is String: _set_err("Incompatible types in binary op '%'"); stack.push_back(Gompl.undefined)
-							elif r == 0: _set_err("Division by zero"); stack.push_back(Gompl.undefined)
+							if r is String or l is String: _set_err_runtime(it[pos], "Incompatible types in binary op '%'"); stack.push_back(Gompl.undefined)
+							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l % r)
 				else:
 					if (l is String and r is not String) or (r is String and l is not String):
-						_set_err("Incompatible types for binary op '" + it[pos][1] + "'"); stack.push_back(Gompl.undefined)
+						_set_err_runtime(it[pos], "Incompatible types for binary op '" + it[pos][2] + "'"); stack.push_back(Gompl.undefined)
 					else:
-						match it[pos][1]:
+						match it[pos][2]:
 							"<": stack.push_back(l < r)
 							"<=": stack.push_back(l <= r)
 							">": stack.push_back(l > r)
 							">=": stack.push_back(l >= r)
 			"unary":
 				var r = stack.pop_back()
-				match it[pos][1]:
+				match it[pos][2]:
 					"not":
-						if r is not bool: _set_err("Incompatible types for unary op 'not'"); stack.push_back(Gompl.undefined)
+						if r is not bool: _set_err_runtime(it[pos], "Incompatible types for unary op 'not'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(not r)
 					"-":
-						if r is not int and r is not float: _set_err("Incompatible types for unary op '-'"); stack.push_back(Gompl.undefined)
+						if r is not int and r is not float: _set_err_runtime(it[pos], "Incompatible types for unary op '-'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(-r)
 			"assign":
 				var res = stack.pop_back()
 				if res == null or res is _Undefined:
-					env.erase(it[pos][1])
-					stack.push_back(undefined)
+					env.erase(it[pos][2])
+					stack.push_back(Gompl.undefined)
 				else:
-					env[it[pos][1]] = res
+					env[it[pos][2]] = res
 					stack.push_back(res)
 			"literal":
-				stack.push_back(it[pos][1])
+				stack.push_back(it[pos][2])
 			"pop":
 				stack.pop_back()
 			"id":
-				stack.push_back(env.get(it[pos][1], undefined))
+				stack.push_back(env.get(it[pos][2], Gompl.undefined))
 			"check":
 				if stack.pop_back(): stack.pop_back()
-				else: stack.push_back(undefined); pos = it[pos][1] - 1
+				else: stack.push_back(Gompl.undefined); pos = it[pos][2] - 1
 			"jump":
-				pos = it[pos][1] - 1
+				pos = it[pos][2] - 1
 			"interrupt":
 				interrupted = true
 			"excall":
 				var res
-				if not it[pos][2]:
-					res = target.call(it[pos][1])
+				if not it[pos][3]:
+					res = target.call(it[pos][2])
 				else:
 					var args = []
-					for i: int in it[pos][2]:
+					for i: int in it[pos][3]:
 						var arg = stack.pop_back()
 						args.append(arg if arg is not _Undefined else null)
-					res = target.callv(it[pos][1], args)
-				stack.push_back(res if res else undefined)
+					res = target.callv(it[pos][2], args)
+				stack.push_back(res if res else Gompl.undefined)
 		
 		pos += 1
 		step += 1
@@ -225,6 +225,10 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775807, sta
 func _set_err(e, overwrite := false) -> void:
 	if err and not overwrite: return
 	err = str(e)
+	
+func _set_err_runtime(instruction: Array, e: String) -> void:
+	var error := str("[Runtime] [Line ", instruction[0], "] ", e)
+	_set_err(error, false)
 
 ### LEXER
 
@@ -263,7 +267,7 @@ func _lex(code: String) -> Array[Array]:
 class _Undefined extends Expr:
 	func _init() -> void: pass
 	func _to_string() -> String: return "undefined"
-	func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void: it.append([ "undefined" ])
+	func compile(_gompl: Gompl, it: Array[Array], _scope_stack: Array[Scope]) -> void: it.append([ _line, "undefined" ])
 
 class Scope:
 	var start_pos: int
@@ -280,7 +284,7 @@ class Expr:
 	func _init(l: int) -> void:
 		_line = l
 	
-	func compile(_gompl: Gompl, _it: Array[Array],_scope_stack: Array[Scope]) -> void:
+	func compile(_gompl: Gompl, _it: Array[Array], _scope_stack: Array[Scope]) -> void:
 		pass
 	
 	# TODO make the operations more robust for different types
@@ -295,14 +299,14 @@ class Expr:
 			if right == null: _set_err(gompl, str("Binary op '", op, "' missing right operand")); return
 			if op == "and" or op == "or":
 				left.compile(gompl, it, scope_stack)
-				var d = [ "bin_logic", op ]; it.append(d)
+				var d = [ _line, "bin_logic", op ]; it.append(d)
 				right.compile(gompl, it, scope_stack)
-				it.append([ "bin_logic_end" ])
+				it.append([ _line, "bin_logic_end" ])
 				d.append(it.size())
 			else:
 				right.compile(gompl, it, scope_stack)
 				left.compile(gompl, it, scope_stack)
-				it.append([ "bin", op ])
+				it.append([ _line, "bin", op ])
 	class Unary extends Expr:
 		var op: String
 		var right: Expr
@@ -310,7 +314,7 @@ class Expr:
 		func _to_string() -> String: return str("Unary('", op, "', ", right, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			right.compile(gompl, it, scope_stack)
-			it.append([ "unary", op ])
+			it.append([ _line, "unary", op ])
 	class Assignment extends Expr:
 		var left: Identifier
 		var op: String
@@ -319,13 +323,13 @@ class Expr:
 		func _to_string() -> String: return str("Assignment(", left, ", '", op, "', ", right, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			right.compile(gompl, it, scope_stack)
-			it.append([ "assign", left.name ])
+			it.append([ _line, "assign", left.name ])
 	class Literal extends Expr:
 		var lit
 		func _init(ln: int, l) -> void: super(ln); lit = l
 		func _to_string() -> String: return str("Literal(", lit, ", ", type_string(typeof(lit)), ")")
-		func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
-			it.append([ "literal", lit ])
+		func compile(_gompl: Gompl, it: Array[Array], _scope_stack: Array[Scope]) -> void:
+			it.append([ _line, "literal", lit ])
 	class List extends Expr:
 		var exprs: Array[Expr]
 		func _init(ln: int, a: Array[Expr]) -> void: super(ln); exprs = a
@@ -333,13 +337,13 @@ class Expr:
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			for i: int in exprs.size():
 				exprs[i].compile(gompl, it, scope_stack)
-				if i != exprs.size() - 1: it.append([ "pop" ])
+				if i != exprs.size() - 1: it.append([ _line, "pop" ])
 	class Identifier extends Expr:
 		var name: String
 		func _init(ln: int, n: String) -> void: super(ln); name = n
 		func _to_string() -> String: return str("Identifier('", name, "')")
-		func compile(_gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
-			it.append([ "id", name ])
+		func compile(_gompl: Gompl, it: Array[Array], _scope_stack: Array[Scope]) -> void:
+			it.append([ _line, "id", name ])
 	class If extends Expr:
 		var conds: Array[Expr]
 		var bodies: Array[Expr]
@@ -351,9 +355,9 @@ class Expr:
 			for i: int in conds.size():
 				if check: check.append(it.size())
 				conds[i].compile(gompl, it, scope_stack)
-				check = [ "check" ]; it.append(check)
+				check = [ _line, "check" ]; it.append(check)
 				bodies[i].compile(gompl, it, scope_stack)
-				jumps.append([ "jump" ]); it.append(jumps[-1])
+				jumps.append([ _line, "jump" ]); it.append(jumps[-1])
 			check.append(it.size())
 			if bodies.size() > conds.size():
 				bodies[-1].compile(gompl, it, scope_stack)
@@ -369,9 +373,9 @@ class Expr:
 			var scope := Scope.new(start_pos)
 			scope_stack.push_back(scope)
 			cond.compile(gompl, it, scope_stack)
-			var check = [ "check" ]; it.append(check)
+			var check = [ _line, "check" ]; it.append(check)
 			body.compile(gompl, it, scope_stack)
-			it.append([ "jump", start_pos])
+			it.append([ _line, "jump", start_pos])
 			check.append(it.size())
 			for s: Array in scope.stops: s.append(it.size()) # jump targets of stops
 			scope_stack.erase(scope)
@@ -381,13 +385,13 @@ class Expr:
 		func _to_string() -> String: return str("Stop()")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			if op == "interrupt":
-				it.append([ "interrupt" ])
+				it.append([ _line, "interrupt" ])
 			elif not scope_stack:
 				_set_err(gompl, str("Unexpected '", op, "'"))
 			else: 
-				var jump = [ "jump" ]
+				var jump = [ _line, "jump" ]
 				if op == "stop":
-					it.append([ "undefined" ])
+					it.append([ _line, "undefined" ])
 					scope_stack.back().stops.append(jump)
 				elif op == "skip":
 					jump.append(scope_stack.back().start_pos)
@@ -397,7 +401,7 @@ class Expr:
 		var params: Array[Expr]
 		func _init(ln: int, m: String, p: Array[Expr]) -> void: super(ln); method = m; params = p
 		func _to_string() -> String: return str("FnCall('", method, "', ", params.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array[Array],_scope_stack: Array[Scope]) -> void:
+		func compile(gompl: Gompl, it: Array[Array], _scope_stack: Array[Scope]) -> void:
 			if not gompl.target or not gompl.target.has_method(method):
 				_set_err(gompl, str("Can not call function '", method, "'"))
 				return
@@ -406,7 +410,7 @@ class Expr:
 				return
 			for i: int in range(params.size() -1, -1, -1):
 				params[i].compile(gompl, it,_scope_stack)
-			it.append([ "excall", method, params.size() ])
+			it.append([ _line, "excall", method, params.size() ])
 
 ### PARSER
 
