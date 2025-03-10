@@ -7,7 +7,7 @@ extends RefCounted
 ## and https://craftinginterpreters.com/parsing-expressions.html
 
 static var undefined: _Undefined = _Undefined.new() # only use this
-	
+
 const _IGNORE := "IGN"
 const _RESERVED := "RSV"
 const _INT := "INT"
@@ -44,12 +44,30 @@ var debug_printing := false
 var err: String
 var target: Object
 
+const T_ANY = "any"
+const T_INT = "int"
+const T_FLOAT = "float"
+const T_STRING = "string"
+const T_BOOL = "bool"
+const T_UNDEFINED = "undefined"
+var _registered_funcs: Dictionary
+
 ###
 
 func _init(target_object: Object = null) -> void:
 	self.target = target_object
 
 ###
+
+## param_types is an array filled with types (T_ANY, T_INT, etc.)
+## optional_params is the amount of optional parameters of the function
+func register_func(func_name: String, callable: Callable, param_types: Array[String] = [], optional_params := 0) -> void:
+	if not func_name or not callable: printerr("Invalid function registration"); return
+	if _registered_funcs.has(func_name): printerr("Function name already registered"); return
+	_registered_funcs[func_name] = [ callable, param_types, optional_params ]
+
+func unregister_func(func_name: String) -> void:
+	_registered_funcs.erase(func_name)
 
 ## env is a Dictionary that contains all the variables assigned in the code
 func eval(code: String, env = null, max_steps: int = 9223372036854775800, state = null):
@@ -117,7 +135,7 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 					if l and l is not _Undefined: stack.push_back(true); pos = it[pos][3] - 1
 			"bin_logic_end":
 				var r = stack.pop_back()
-				stack.push_back(r or r is not _Undefined)
+				stack.push_back(r and r is not _Undefined)
 			"bin":
 				var l = stack.pop_back()
 				var r = stack.pop_back()
@@ -164,10 +182,10 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 				var r = stack.pop_back()
 				match it[pos][2]:
 					"not":
-						if r is not bool: _set_err_runtime(it[pos], "Incompatible types for unary op 'not'"); stack.push_back(Gompl.undefined)
+						if r is not bool: _set_err_runtime(it[pos], "Incompatible type for unary op 'not'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(not r)
 					"-":
-						if r is not int and r is not float: _set_err_runtime(it[pos], "Incompatible types for unary op '-'"); stack.push_back(Gompl.undefined)
+						if r is not int and r is not float: _set_err_runtime(it[pos], "Incompatible type for unary op '-'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(-r)
 			"assign":
 				var res = stack.pop_back()
@@ -192,14 +210,31 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 				interrupted = true
 			"excall":
 				var res
+				var rf = _registered_funcs.get(it[pos][2])
 				if not it[pos][3]:
-					res = target.call(it[pos][2])
+					if rf: res = rf[0].call()
+					else: res = target.call(it[pos][2])
 				else:
 					var args = []
 					for i: int in it[pos][3]:
 						var arg = stack.pop_back()
-						args.append(arg if arg is not _Undefined else null)
-					res = target.callv(it[pos][2], args)
+						var a = arg if arg is not _Undefined else null
+						if rf:
+							var incomp := false
+							match rf[1][i]:
+								T_INT: if a is not int and a is not float: incomp = true
+								T_FLOAT: if a is not int and a is not float: incomp = true
+								T_STRING: if a is not String: incomp = true
+								T_BOOL: if a is not bool: incomp = true
+							if incomp:
+								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
+								stack.push_back(Gompl.undefined)
+								break
+						args.append(a)
+					if not err:
+						if rf:
+							res = rf[0].callv(args)
+						else: res = target.callv(it[pos][2], args)
 				stack.push_back(res if res else Gompl.undefined)
 		
 		pos += 1
@@ -401,15 +436,19 @@ class Expr:
 		var params: Array[Expr]
 		func _init(ln: int, m: String, p: Array[Expr]) -> void: super(ln); method = m; params = p
 		func _to_string() -> String: return str("FnCall('", method, "', ", params.map(func(i): return i), ")")
-		func compile(gompl: Gompl, it: Array[Array], _scope_stack: Array[Scope]) -> void:
-			if not gompl.target or not gompl.target.has_method(method):
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
+			var rf = gompl._registered_funcs.get(method)
+			if not rf and (not gompl.target or not gompl.target.has_method(method)):
 				_set_err(gompl, str("Can not call function '", method, "'"))
 				return
-			if params.size() > gompl.target.get_method_argument_count(method):
+			if rf:
+				if params.size() < rf[1].size() - rf[2]: _set_err(gompl, str("Too few parameters for function '", method, "'")); return
+				if params.size() > rf[1].size(): _set_err(gompl, str("Too many parameters for function '", method, "'")); return
+			elif params.size() > gompl.target.get_method_argument_count(method):
 				_set_err(gompl, str("Too many parameters for function '", method, "'"))
 				return
 			for i: int in range(params.size() -1, -1, -1):
-				params[i].compile(gompl, it,_scope_stack)
+				params[i].compile(gompl, it, scope_stack)
 			it.append([ _line, "excall", method, params.size() ])
 
 ### PARSER

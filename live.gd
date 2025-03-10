@@ -13,6 +13,7 @@ var state := {}
 ###
 
 func _ready() -> void:
+	gompl.register_func("print", func(a): code_error.text = str(a), [ Gompl.T_ANY ], 0)
 	code_editor.text = code
 	code_compile.button_down.connect(on_code_compile)
 	on_code_compile()
@@ -21,11 +22,13 @@ func _process(_delta: float) -> void:
 	if not gompl.err:
 		# the code is compiled every frame, this is wasteful, but okay for this small example
 		gompl.eval(code, null, 5000, state)
-		code_error.text = gompl.err if gompl.err else ""
+		if gompl.err: code_error.text = gompl.err
+		gompl.debug_printing = false
 
 ###
 
 func on_code_compile() -> void:
+	gompl.debug_printing = true
 	state.clear()
 	code = code_editor.text
 	gompl.err = ""
