@@ -45,8 +45,7 @@ var err: String
 var target: Object
 
 const T_ANY = "any"
-const T_INT = "int"
-const T_FLOAT = "float"
+const T_NUMBER = "number"
 const T_STRING = "string"
 const T_BOOL = "bool"
 const T_UNDEFINED = "undefined"
@@ -216,18 +215,27 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 					else: res = target.call(it[pos][2])
 				else:
 					var args = []
+					var mlm = null if rf else target.get_method_list().filter(func(m: Dictionary) -> bool: return m.name == it[pos][2])[0]
 					for i: int in it[pos][3]:
 						var arg = stack.pop_back()
 						var a = arg if arg is not _Undefined else null
+						var incomp := false
 						if rf:
-							var incomp := false
 							match rf[1][i]:
-								T_INT: if a is not int and a is not float: incomp = true
-								T_FLOAT: if a is not int and a is not float: incomp = true
+								T_NUMBER: if a is not int and a is not float: incomp = true
 								T_STRING: if a is not String: incomp = true
 								T_BOOL: if a is not bool: incomp = true
 							if incomp:
 								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
+								stack.push_back(Gompl.undefined)
+								break
+						else:
+							match mlm.args[i].type:
+								TYPE_INT: if a is not int and a is not float: incomp = true
+								TYPE_FLOAT: if a is not int and a is not float: incomp = true
+								_: if typeof(a) != mlm.args[i].type and mlm.args[i].type != TYPE_NIL: incomp = true
+							if incomp:
+								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", type_string(mlm.args[i].type), "'"))
 								stack.push_back(Gompl.undefined)
 								break
 						args.append(a)
@@ -444,9 +452,14 @@ class Expr:
 			if rf:
 				if params.size() < rf[1].size() - rf[2]: _set_err(gompl, str("Too few parameters for function '", method, "'")); return
 				if params.size() > rf[1].size(): _set_err(gompl, str("Too many parameters for function '", method, "'")); return
-			elif params.size() > gompl.target.get_method_argument_count(method):
-				_set_err(gompl, str("Too many parameters for function '", method, "'"))
-				return
+			else:
+				var arg_count := gompl.target.get_method_argument_count(method)
+				if params.size() > arg_count:
+					_set_err(gompl, str("Too many parameters for function '", method, "'"))
+					return
+				elif params.size() < arg_count - gompl.target.get_method_list().filter(func(m: Dictionary) -> bool: return m.name == method)[0].default_args.size():
+					_set_err(gompl, str("Too few parameters for function '", method, "'"))
+					return
 			for i: int in range(params.size() -1, -1, -1):
 				params[i].compile(gompl, it, scope_stack)
 			it.append([ _line, "excall", method, params.size() ])
