@@ -240,10 +240,9 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 								break
 						args.append(a)
 					if not err:
-						if rf:
-							res = rf[0].callv(args)
+						if rf: res = rf[0].callv(args)
 						else: res = target.callv(it[pos][2], args)
-				stack.push_back(res if res else Gompl.undefined)
+				stack.push_back(res if res != null else Gompl.undefined)
 		
 		pos += 1
 		step += 1

@@ -14,6 +14,7 @@ var state := {}
 
 func _ready() -> void:
 	gompl.register_func("print", func(a): code_error.text = str(a), [ Gompl.T_ANY ])
+	gompl.register_func("rnd", func(): return randf())
 	gompl.register_func("mouse_pos", func() -> Vector2: return get_viewport().get_mouse_position())
 	gompl.register_func("v2", func(x: float, y: float) -> Vector2: return Vector2(x, y), [ Gompl.T_NUMBER, Gompl.T_NUMBER ])
 	
