@@ -59,4 +59,4 @@ Everything is an expression, so you can do things like `x = if y != 5 then 0 els
 
 Gompl natively supports integers, floats, bools, strings and function calls. The functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl and/or by registering functions via Gompl's `register_func` method. Setting a target object will allow access to all of its methods, which might be undesirable.
 
-Using `interrupt` will exit the script, but when providing a state `Dictionary` you can continue the execution. It's also possible to limit the amount of execution steps.
+Using `interrupt` will exit the script, but when providing a state `Dictionary` you can continue the execution. It's also possible to limit the amount of execution steps, and interrupting the script via `state["interrupt"] = true` (for example, inside a function called from Gompl).

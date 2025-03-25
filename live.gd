@@ -25,7 +25,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if not gompl.err:
 		# the code is compiled every frame, this is wasteful, but okay for this small example
-		gompl.eval(code, null, 5000, state)
+		gompl.eval(code, null, state, 5000)
 		if gompl.err: code_error.text = gompl.err
 		#gompl.debug_printing = false
 
