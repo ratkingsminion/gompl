@@ -69,14 +69,14 @@ func unregister_func(func_name: String) -> void:
 	_registered_funcs.erase(func_name)
 
 ## env is a Dictionary that contains all the variables assigned in the code
-func eval(code: String, env = null, max_steps: int = 9223372036854775800, state = null):
+func eval(code: String, env = null, state = null, max_steps: int = 9223372036854775800):
 	var tokens := tokenize_code(code)
 	if not tokens: return null # some error happened
 	var ast := parse_tokens(tokens)
 	if not ast: return null # some error happened
 	var instructions := compile(ast)
 	if not instructions: return null # some error happened
-	return run(instructions, env, max_steps, state)
+	return run(instructions, env, state, max_steps)
 
 ###
 
@@ -111,17 +111,18 @@ func compile(ast: Expr) -> Array[Array]:
 ## env is a Dictionary that contains all the variables assigned in the code
 ## If you don't provide env, a temporary one will be created
 ## If you provide a state Dictionary, it can be re-used to continue the execution after it was interrupted
-func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, state = null):
+func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036854775800):
 	err = ""
-	if env == null: env = {} if state == null else state.get("env", {})
+	if env == null: env = {} if state is not Dictionary else state.get("env", {})
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
 	
 	var step: int = 0
-	var stack: Array = [] if state == null else state.get("stack", [])
-	var pos: int = 0 if state == null else state.get("pos", 0)
+	var stack: Array = [] if state is not Dictionary else state.get("stack", [])
+	var pos: int = 0 if state is not Dictionary else state.get("pos", 0)
 	
-	var interrupted := false
-	while not err and pos < it.size() and not interrupted:
+	while not err and pos < it.size():
+		if (state is StringName and state == &"interrupted") or (state is Dictionary and state.has("interrupted")):
+			break
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
 		match it[pos][1]:
 			"undefined":
@@ -206,7 +207,8 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 			"jump":
 				pos = it[pos][2] - 1
 			"interrupt":
-				interrupted = true
+				if state is Dictionary: state["interrupted"] = true
+				else: state = &"interrupted"
 			"excall":
 				var res
 				var rf = _registered_funcs.get(it[pos][2])
@@ -247,15 +249,19 @@ func run(it: Array[Array], env = null, max_steps: int = 9223372036854775800, sta
 		pos += 1
 		step += 1
 		if step >= max_steps:
-			interrupted = true
+			if state is Dictionary: state["interrupted"] = true
+			else: state = &"interrupted"
 	
 	if err: printerr(err); return null
 	
-	if interrupted and state != null:
+	if state is Dictionary and state.has("interrupted"):
 		state["stack"] = stack
 		state["pos"] = pos
 		state["env"] = env
 		state["steps"] = step
+		state.erase("interrupted")
+		return null
+	elif state is StringName and state == &"interrupted":
 		return null
 	
 	if debug_printing and stack: print("RESULT: ", stack.back())
