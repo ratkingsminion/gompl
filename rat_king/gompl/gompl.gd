@@ -140,9 +140,13 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 				var l = stack.pop_back()
 				var r = stack.pop_back()
 				if it[pos][2] == "==":
-					stack.push_back(typeof(l) == typeof(r) and l == r)
+					if _is_string(l) and _is_string(r): stack.push_back(l == r)
+					elif _is_number(l) and _is_number(r): stack.push_back(l == r)
+					else: stack.push_back(typeof(l) == typeof(r) and l == r)
 				elif it[pos][2] == "!=":
-					stack.push_back(typeof(l) != typeof(r) or l != r)
+					if _is_string(l) and _is_string(r): stack.push_back(l != r)
+					elif _is_number(l) and _is_number(r): stack.push_back(l != r)
+					else: stack.push_back(typeof(l) != typeof(r) or l != r)
 				elif l is _Undefined or r is _Undefined:
 					_set_err_runtime(it[pos], "Can't use undefined variable in binary op '" + it[pos][2] + "'")
 					stack.push_back(Gompl.undefined)
@@ -150,27 +154,27 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 					#print(">>> ", l, " ", it[pos][1], " ", r)
 					match it[pos][2]:
 						"+":
-							if l is String or r is String: stack.push_back(str(l, r))
+							if _is_string(l) or _is_string(r): stack.push_back(str(l, r))
 							else: stack.push_back(l + r)
 						"-":
-							if l is String: stack.push_back(l.replace(str(r), ""))
-							elif r is String: _set_err_runtime(it[pos], "Incompatible types in binary op '-'"); stack.push_back(Gompl.undefined)
+							if _is_string(l): stack.push_back(l.replace(str(r), ""))
+							elif _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '-'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l - r)
 						"*":
-							if l is String and (r is int or r is float): stack.push_back(l.repeat(r))
-							elif (l is int or l is float) and r is String: stack.push_back(r.repeat(l))
-							elif r is String and l is String: _set_err_runtime(it[pos], "Incompatible types in binary op '*'"); stack.push_back(Gompl.undefined)
+							if _is_string(l) and _is_number(r): stack.push_back(l.repeat(r))
+							elif _is_number(l) and _is_string(r): stack.push_back(r.repeat(l))
+							elif _is_string(l) and _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '*'"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l * r)
 						"/":
-							if r is String or l is String: _set_err_runtime(it[pos], "Incompatible types in binary op '/'"); stack.push_back(Gompl.undefined)
+							if _is_string(l) or _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '/'"); stack.push_back(Gompl.undefined)
 							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l / r)
 						"%":
-							if r is String or l is String: _set_err_runtime(it[pos], "Incompatible types in binary op '%'"); stack.push_back(Gompl.undefined)
+							if _is_string(l) or _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '%'"); stack.push_back(Gompl.undefined)
 							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l % r)
 				else:
-					if (l is String and r is not String) or (r is String and l is not String):
+					if (_is_string(l) and not _is_string(r)) or (not _is_string(l) and _is_string(r)):
 						_set_err_runtime(it[pos], "Incompatible types for binary op '" + it[pos][2] + "'"); stack.push_back(Gompl.undefined)
 					else:
 						match it[pos][2]:
@@ -185,7 +189,7 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 						if r is not bool: _set_err_runtime(it[pos], "Incompatible type for unary op 'not'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(not r)
 					"-":
-						if r is not int and r is not float: _set_err_runtime(it[pos], "Incompatible type for unary op '-'"); stack.push_back(Gompl.undefined)
+						if not _is_number(r): _set_err_runtime(it[pos], "Incompatible type for unary op '-'"); stack.push_back(Gompl.undefined)
 						else: stack.push_back(-r)
 			"assign":
 				var res = stack.pop_back()
@@ -277,6 +281,12 @@ func _set_err(e, overwrite := false) -> void:
 func _set_err_runtime(instruction: Array, e: String) -> void:
 	var error := str("[Runtime] [Line ", instruction[0], "] ", e)
 	_set_err(error, false)
+
+func _is_string(v) -> bool:
+	return v is String or v is StringName
+
+func _is_number(v) -> bool:
+	return v is int or v is float
 
 ### LEXER
 
