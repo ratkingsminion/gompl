@@ -104,7 +104,7 @@ func _ready() -> void:
 			while true do
 				x = x + 1
 				if x > 100 then interrupt end // premature script exit
-			end', null, max_steps, state)
+			end', null, state, max_steps)
 		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
 	

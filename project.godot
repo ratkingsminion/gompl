@@ -17,7 +17,7 @@ IMP: https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python-
 config/version="1.0"
 config/tags=PackedStringArray("tool")
 run/main_scene="res://test.tscn"
-config/features=PackedStringArray("4.3", "GL Compatibility")
+config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [rendering]
