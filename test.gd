@@ -23,9 +23,6 @@ func _ready() -> void:
 		ifif = 2 + 2 * 3 // keywords can be part of the identifier names
 		func_1()
 		func_2("foo", ifif)
-		// functions need to have the correct parameter count and types,
-		// otherwise you get GDScript errors inside the Debugger
-		// (instead of just Gompl errors)
 	')
 	print("RESULT 1: ", res) # "return value from func_2"
 	assert(res == "return value from func_2", "Result 1 wrong")

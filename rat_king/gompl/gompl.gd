@@ -44,11 +44,11 @@ var debug_printing := false
 var err: String
 var target: Object
 
-const T_ANY = "any"
-const T_NUMBER = "number"
-const T_STRING = "string"
-const T_BOOL = "bool"
-const T_UNDEFINED = "undefined"
+const T_ANY = &"any"
+const T_NUMBER = &"number"
+const T_STRING = &"string"
+const T_BOOL = &"bool"
+const T_UNDEFINED = &"undefined"
 var _registered_funcs: Dictionary
 
 ###
@@ -60,9 +60,9 @@ func _init(target_object: Object = null) -> void:
 
 ## param_types is an array filled with types (T_ANY, T_INT, etc.)
 ## optional_params is the amount of optional parameters of the function
-func register_func(func_name: String, callable: Callable, param_types: Array[String] = [], optional_params := 0) -> void:
+func register_func(func_name: String, callable: Callable, param_types: Array[StringName] = [], optional_params := 0) -> void:
 	if not func_name or not callable: printerr("Invalid function registration"); return
-	if _registered_funcs.has(func_name): printerr("Function name already registered"); return
+	if func_name in _registered_funcs: printerr("Function name already registered"); return
 	_registered_funcs[func_name] = [ callable, param_types, optional_params ]
 
 func unregister_func(func_name: String) -> void:
@@ -113,15 +113,15 @@ func compile(ast: Expr) -> Array[Array]:
 ## If you provide a state Dictionary, it can be re-used to continue the execution after it was interrupted
 func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036854775800):
 	err = ""
-	if env == null: env = {} if state is not Dictionary else state.get("env", {})
+	if env == null: env = {} if state is not Dictionary else state.get(&"env", {})
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
 	
 	var step: int = 0
-	var stack: Array = [] if state is not Dictionary else state.get("stack", [])
-	var pos: int = 0 if state is not Dictionary else state.get("pos", 0)
+	var stack: Array = [] if state is not Dictionary else state.get(&"stack", [])
+	var pos: int = 0 if state is not Dictionary else state.get(&"pos", 0)
 	
 	while not err and pos < it.size():
-		if (state is StringName and state == &"interrupted") or (state is Dictionary and state.has("interrupted")):
+		if (state is StringName and state == &"interrupted") or (state is Dictionary and &"interrupted" in state):
 			break
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
 		match it[pos][1]:
@@ -174,7 +174,7 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
 							else: stack.push_back(l % r)
 				else:
-					if (_is_string(l) and not _is_string(r)) or (not _is_string(l) and _is_string(r)):
+					if _is_string(l) != _is_string(r):
 						_set_err_runtime(it[pos], "Incompatible types for binary op '" + it[pos][2] + "'"); stack.push_back(Gompl.undefined)
 					else:
 						match it[pos][2]:
@@ -211,7 +211,7 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 			"jump":
 				pos = it[pos][2] - 1
 			"interrupt":
-				if state is Dictionary: state["interrupted"] = true
+				if state is Dictionary: state[&"interrupted"] = true
 				else: state = &"interrupted"
 			"excall":
 				var res
@@ -253,17 +253,17 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 		pos += 1
 		step += 1
 		if step >= max_steps:
-			if state is Dictionary: state["interrupted"] = true
+			if state is Dictionary: state[&"interrupted"] = true
 			else: state = &"interrupted"
 	
 	if err: printerr(err); return null
 	
-	if state is Dictionary and state.has("interrupted"):
-		state["stack"] = stack
-		state["pos"] = pos
-		state["env"] = env
-		state["steps"] = step
-		state.erase("interrupted")
+	if state is Dictionary and &"interrupted" in state:
+		state[&"stack"] = stack
+		state[&"pos"] = pos
+		state[&"env"] = env
+		state[&"steps"] = step
+		state.erase(&"interrupted")
 		return null
 	elif state is StringName and state == &"interrupted":
 		return null
