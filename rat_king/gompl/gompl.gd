@@ -600,7 +600,8 @@ class Parser:
 		return primary()
 
 	func primary() -> Expr:
-		if pos >= tokens.size(): return null
+		var tcount := tokens.size()
+		if pos >= tcount: return null
 		var res: Expr = null
 		_err_pos = pos
 		var ln: int = tokens[pos][2]
@@ -612,18 +613,18 @@ class Parser:
 			_STRING: res = Expr.Literal.new(ln, tokens[pos][0].substr(1, tokens[pos][0].length() - 2).c_unescape()) # removing the quotation marks
 			_ID:
 				var ident = tokens[pos][0]
-				if pos < tokens.size() - 1 and tokens[pos + 1][0] == "(":
+				if pos < tcount - 1 and tokens[pos + 1][0] == "(":
 					pos += 2
 					var params: Array[Expr] = []
-					while pos < tokens.size() and tokens[pos][0] != ")":
+					while pos < tcount and tokens[pos][0] != ")":
 						var expr := expression()
 						if not expr: _set_err("Expect expression inside params list"); break
 						params.append(expr)
-						if pos >= tokens.size(): _set_err("Expect ',' or ')' in params list, early EOF"); break
+						if pos >= tcount: _set_err("Expect ',' or ')' in params list, early EOF"); break
 						elif tokens[pos][0] == ",": pos += 1; continue
 						elif tokens[pos][0] != ")": _set_err("Expect ',' or ')' in params list"); break
 					if not gompl.err:
-						if pos >= tokens.size(): _set_err("Expect ',' or ')' in params list, early EOF")
+						if pos >= tcount: _set_err("Expect ',' or ')' in params list, early EOF")
 						else: res = Expr.FnCall.new(ln, ident, params)
 				else:
 					res = Expr.Identifier.new(ln, ident)
@@ -632,7 +633,7 @@ class Parser:
 					pos += 1
 					var expr := expression()
 					if not expr: _set_err("Expect expression inside group")
-					elif pos >= tokens.size(): _set_err("Expect ')' after expression, early EOF")
+					elif pos >= tcount: _set_err("Expect ')' after expression, early EOF")
 					elif tokens[pos][0] != ")": _set_err("Expect ')' after expression")
 					else: res = expr
 				elif tokens[pos][0] == "if":
@@ -643,21 +644,22 @@ class Parser:
 						pos += 1
 						var cond := expression()
 						if not cond: _set_err("Expect condition after '" + expected + "'"); break
-						elif pos >= tokens.size(): _set_err("Expect 'then' after '" + expected + "' condition, early EOF"); break
+						elif pos >= tcount: _set_err("Expect 'then' after '" + expected + "' condition, early EOF"); break
 						elif tokens[pos][0] != "then": _set_err("Expect 'then' after '" + expected + "' condition"); break
 						conds.append(cond)
 						pos += 1
 						var body := expressions()
 						if not body: _set_err("Expect body after 'then'"); break
-						elif pos >= tokens.size(): _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body, early EOF"); break
+						elif pos >= tcount: _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body, early EOF"); break
 						elif tokens[pos][0] != "else" and tokens[pos][0] != "elif" and tokens[pos][0] != "end": _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body"); break
 						bodies.append(body)
 						expected = "elif"
-					if tokens[pos][0] == "else":
+					if pos >= tcount: _set_err("Expect 'end' or 'else' after if-body, early EOF")
+					elif tokens[pos][0] == "else":
 						pos += 1
 						var body_else := expressions()
 						if not body_else: _set_err("Expect body after 'else'")
-						elif pos >= tokens.size() : _set_err("Expect 'end' after else-body, early EOF")
+						elif pos >= tcount : _set_err("Expect 'end' after else-body, early EOF")
 						elif tokens[pos][0] != "end": _set_err("Expect 'end' after else-body")
 						else: bodies.append(body_else)
 					if not gompl.err: res = Expr.If.new(ln, conds, bodies)
@@ -665,13 +667,13 @@ class Parser:
 					pos += 1
 					var cond := expression()
 					if not cond: _set_err("Expect condition after 'while'")
-					elif pos >= tokens.size(): _set_err("Expect 'do' after 'while' condition, early EOF")
+					elif pos >= tcount: _set_err("Expect 'do' after 'while' condition, early EOF")
 					elif tokens[pos][0] != "do": _set_err("Expect 'do' after 'while' condition")
 					else:
 						pos += 1
 						var body := expressions()
 						if not body: _set_err("Expect body after 'do'")
-						elif pos >= tokens.size() : _set_err("Expect 'end' after while-body, early EOF")
+						elif pos >= tcount: _set_err("Expect 'end' after while-body, early EOF")
 						elif tokens[pos][0] != "end": _set_err("Expect 'end' after while-body")
 						else: res = Expr.While.new(ln, cond, body)
 				elif tokens[pos][0] == "stop":
