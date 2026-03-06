@@ -229,7 +229,7 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 						if rf:
 							match rf[1][i]:
 								T_NUMBER: if a is not int and a is not float: incomp = true
-								T_STRING: if a is not String: incomp = true
+								T_STRING: if a is not String and a is not StringName: incomp = true
 								T_BOOL: if a is not bool: incomp = true
 							if incomp:
 								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
@@ -239,6 +239,8 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 							match mlm.args[i].type:
 								TYPE_INT: if a is not int and a is not float: incomp = true
 								TYPE_FLOAT: if a is not int and a is not float: incomp = true
+								TYPE_STRING: if a is not String and a is not StringName: incomp = true
+								TYPE_STRING_NAME: if a is not String and a is not StringName: incomp = true
 								_: if typeof(a) != mlm.args[i].type and mlm.args[i].type != TYPE_NIL: incomp = true
 							if incomp:
 								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", type_string(mlm.args[i].type), "'"))
@@ -433,7 +435,7 @@ class Expr:
 			cond.compile(gompl, it, scope_stack)
 			var check = [ _line, "check" ]; it.append(check)
 			body.compile(gompl, it, scope_stack)
-			it.append([ _line, "jump", start_pos])
+			it.append([ _line, "jump", start_pos ])
 			check.append(it.size())
 			for s: Array in scope.stops: s.append(it.size()) # jump targets of stops
 			scope_stack.erase(scope)
