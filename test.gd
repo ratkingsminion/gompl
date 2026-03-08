@@ -25,7 +25,7 @@ func _ready() -> void:
 		func_2("foo", ifif)
 	')
 	print("RESULT 1: ", res) # "return value from func_2"
-	assert(res == "return value from func_2", "Result 1 wrong")
+	assert(res is String and res == "return value from func_2", "Result 1 wrong")
 	
 	# test factorial code
 	res = g.eval('
@@ -38,7 +38,7 @@ func _ready() -> void:
 		p // the last expression is the result of the eval() call
 	')
 	print("RESULT 2: ", res) # 120
-	assert(res == 120, "Result 2 wrong")
+	assert((res is int or res is float) and res == 120, "Result 2 wrong")
 	
 	# test custom env Dictionary, and some assignments
 	var env = {}
@@ -52,7 +52,7 @@ func _ready() -> void:
 	', env)
 	print("RESULT 3: ", res) # true
 	print("-> WITH ENVIRONMENT: ", env)
-	assert(res == true, "Result 3 wrong")
+	assert((res is bool) and res == true, "Result 3 wrong")
 	
 	# test undefined (similar to null in GDScript)
 	res = g.eval('
@@ -61,7 +61,7 @@ func _ready() -> void:
 		y // will return undefined
 	')
 	print("RESULT 4: ", res) # undefined
-	assert(res == Gompl.undefined, "Result 4 wrong")
+	assert(res is Object and res == Gompl.undefined, "Result 4 wrong")
 	
 	# test conditions, skip and stop
 	res = g.eval('
@@ -79,7 +79,7 @@ func _ready() -> void:
 		x
 	')
 	print("RESULT 5: ", res) # 6
-	assert(res == 6, "Result 5 wrong")
+	assert((res is int or res is float) and res == 6, "Result 5 wrong")
 	
 	# test string stuff
 	res = g.eval('
@@ -88,7 +88,22 @@ func _ready() -> void:
 		"number test: " + 3.141 + " " + 1000
 	')
 	print("RESULT 6: ", res) # number test: 3.141 1000
-	assert(res == "number test: 3.141 1000", "Result 6 wrong")
+	assert((res is String) and res == "number test: 3.141 1000", "Result 6 wrong")
+	
+	# test function
+	res = g.eval('
+		x = 3 y = 5
+		sum()
+		sum()
+		
+		function sum()
+			x = x + y
+			print("sum: " + x)
+			x
+		end
+	')
+	print("RESULT 7: ", res) # 13
+	assert((res is int or res is float) and res == 13, "Result 7 wrong")
 	
 	# test endless loop and max steps of code execution
 	var max_steps := 200

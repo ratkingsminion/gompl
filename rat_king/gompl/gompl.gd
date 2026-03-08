@@ -36,7 +36,7 @@ const _TOKEN_TERM: Array[String] = [ "-", "+" ]
 const _TOKEN_FACTOR: Array[String] = [ "/", "*", "%" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt", "function" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
@@ -69,7 +69,7 @@ func unregister_func(func_name: String) -> void:
 	_registered_funcs.erase(func_name)
 
 ## env is a Dictionary that contains all the variables assigned in the code
-func eval(code: String, env = null, state = null, max_steps: int = 9223372036854775800):
+func eval(code: String, env = null, state = null, max_steps := -1):
 	var tokens := tokenize_code(code)
 	if not tokens: return null # some error happened
 	var ast := parse_tokens(tokens)
@@ -111,7 +111,7 @@ func compile(ast: Expr) -> Array[Array]:
 ## env is a Dictionary that contains all the variables assigned in the code
 ## If you don't provide env, a temporary one will be created
 ## If you provide a state Dictionary, it can be re-used to continue the execution after it was interrupted
-func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036854775800):
+func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant:
 	err = ""
 	if env == null: env = {} if state is not Dictionary else state.get(&"env", {})
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
@@ -213,6 +213,10 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 			"interrupt":
 				if state is Dictionary: state[&"interrupted"] = true
 				else: state = &"interrupted"
+			"incall":
+				var rf: Expr.Function = _registered_funcs.get(it[pos][2])
+				var res = run(rf.it, env, state, max_steps)
+				stack.push_back(res if res != null else Gompl.undefined)
 			"excall":
 				var res
 				var rf = _registered_funcs.get(it[pos][2])
@@ -254,7 +258,7 @@ func run(it: Array[Array], env = null, state = null, max_steps: int = 9223372036
 		
 		pos += 1
 		step += 1
-		if step >= max_steps:
+		if max_steps > 0 and step >= max_steps:
 			if state is Dictionary: state[&"interrupted"] = true
 			else: state = &"interrupted"
 	
@@ -344,6 +348,9 @@ class Expr:
 	func _init(l: int) -> void:
 		_line = l
 	
+	func _adds_instructions() -> bool:
+		return true
+	
 	func compile(_gompl: Gompl, _it: Array[Array], _scope_stack: Array[Scope]) -> void:
 		pass
 	
@@ -395,9 +402,12 @@ class Expr:
 		func _init(ln: int, a: Array[Expr]) -> void: super(ln); exprs = a
 		func _to_string() -> String: return str("List(", exprs.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
+			var p := 0
 			for i: int in exprs.size():
+				if exprs[i]._adds_instructions():
+					if p != 0: it.append([ _line, "pop" ])
+					p += 1
 				exprs[i].compile(gompl, it, scope_stack)
-				if i != exprs.size() - 1: it.append([ _line, "pop" ])
 	class Identifier extends Expr:
 		var name: String
 		func _init(ln: int, n: String) -> void: super(ln); name = n
@@ -447,7 +457,7 @@ class Expr:
 			if op == "interrupt":
 				it.append([ _line, "interrupt" ])
 			elif not scope_stack:
-				_set_err(gompl, str("Unexpected '", op, "'"))
+				_set_err(gompl, "Unexpected '" + op + "'")
 			else: 
 				var jump = [ _line, "jump" ]
 				if op == "stop":
@@ -456,6 +466,14 @@ class Expr:
 				elif op == "skip":
 					jump.append(scope_stack.back().start_pos)
 				it.append(jump)
+	class Function extends Expr:
+		var body: Expr
+		var it: Array[Array]
+		func _init(ln: int, b: Expr) -> void: super(ln); body = b
+		func _to_string() -> String: return str("Function(", body, ")")
+		func _adds_instructions() -> bool: return false
+		func compile(gompl: Gompl, _it: Array[Array], _scope_stack: Array[Scope]) -> void:
+			body.compile(gompl, it, [])
 	class FnCall extends Expr:
 		var method: String
 		var params: Array[Expr]
@@ -463,10 +481,15 @@ class Expr:
 		func _to_string() -> String: return str("FnCall('", method, "', ", params.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			var rf = gompl._registered_funcs.get(method)
+			
+			if rf is Function:
+				it.append([ _line, "incall", method, 0 ])
+				return
+				
 			if not rf and (not gompl.target or not gompl.target.has_method(method)):
 				_set_err(gompl, str("Can not call function '", method, "'"))
 				return
-			if rf:
+			elif rf:
 				if params.size() < rf[1].size() - rf[2]: _set_err(gompl, str("Too few parameters for function '", method, "'")); return
 				if params.size() > rf[1].size(): _set_err(gompl, str("Too many parameters for function '", method, "'")); return
 			else:
@@ -498,18 +521,19 @@ class Parser:
 		var error := str("[Parser] [Line ", tokens[mini(_err_pos, tokens.size() - 1)][2], "] ", e)
 		gompl._set_err(error, false)
 	
-	func expressions() -> Expr:
+	func expressions(expected_reserved = null) -> Expr:
 		var expr: Expr = null
 		var array: Array[Expr]
 		var ln: int = tokens[pos][2]
 		while pos < tokens.size():
+			if expected_reserved and tokens[pos][0] in expected_reserved: break
 			var e := expression()
 			if gompl.err: return null
 			if not e: break
 			array.append(e)
 			expr = e
 		return Expr.List.new(ln, array) if array.size() > 1 else expr
-
+	
 	func expression() -> Expr:
 		return assignment()
 	
@@ -650,21 +674,19 @@ class Parser:
 						elif tokens[pos][0] != "then": _set_err("Expect 'then' after '" + expected + "' condition"); break
 						conds.append(cond)
 						pos += 1
-						var body := expressions()
+						var body := expressions([ "elif", "else", "end" ])
 						if not body: _set_err("Expect body after 'then'"); break
 						elif pos >= tcount: _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body, early EOF"); break
-						elif tokens[pos][0] != "else" and tokens[pos][0] != "elif" and tokens[pos][0] != "end": _set_err("Expect 'elif', 'else' or 'end' after " + expected + "-body"); break
 						bodies.append(body)
 						expected = "elif"
-					if pos >= tcount: _set_err("Expect 'end' or 'else' after if-body, early EOF")
-					elif tokens[pos][0] == "else":
+					if pos < tcount and tokens[pos][0] == "else":
 						pos += 1
-						var body_else := expressions()
+						var body_else := expressions([ "end" ])
 						if not body_else: _set_err("Expect body after 'else'")
 						elif pos >= tcount : _set_err("Expect 'end' after else-body, early EOF")
-						elif tokens[pos][0] != "end": _set_err("Expect 'end' after else-body")
 						else: bodies.append(body_else)
-					if not gompl.err: res = Expr.If.new(ln, conds, bodies)
+					if not gompl.err:
+						res = Expr.If.new(ln, conds, bodies)
 				elif tokens[pos][0] == "while":
 					pos += 1
 					var cond := expression()
@@ -673,10 +695,9 @@ class Parser:
 					elif tokens[pos][0] != "do": _set_err("Expect 'do' after 'while' condition")
 					else:
 						pos += 1
-						var body := expressions()
+						var body := expressions([ "end" ])
 						if not body: _set_err("Expect body after 'do'")
 						elif pos >= tcount: _set_err("Expect 'end' after while-body, early EOF")
-						elif tokens[pos][0] != "end": _set_err("Expect 'end' after while-body")
 						else: res = Expr.While.new(ln, cond, body)
 				elif tokens[pos][0] == "stop":
 					res = Expr.FlowControl.new(ln, "stop")
@@ -684,8 +705,29 @@ class Parser:
 					res = Expr.FlowControl.new(ln, "skip")
 				elif tokens[pos][0] == "interrupt":
 					res = Expr.FlowControl.new(ln, "interrupt")
+				elif tokens[pos][0] == "function":
+					pos += 1
+					if pos >= tcount: _set_err("Expect identifier after 'function', early EOF")
+					elif tokens[pos][1] != _ID: _set_err("Expect identifier after 'function'")
+					else:
+						var ident: String = tokens[pos][0]
+						if pos >= tcount - 1: _set_err("Expect '(' after identifier, early EOF")
+						elif tokens[pos + 1][0] != "(": _set_err("Expect '(' after identifier")
+						else:
+							pos += 1
+							if pos >= tcount - 1: _set_err("Expect ')' after '(', early EOF")
+							elif tokens[pos + 1][0] != ")": _set_err("Expect ')' after '('")
+							else:
+								pos += 2
+								var body := expressions([ "end" ])
+								if not body: _set_err("Expect body after ')'")
+								elif pos >= tcount: _set_err("Expect 'end' after function-body, early EOF")
+								else:
+									res = Expr.Function.new(ln, body)
+									gompl._registered_funcs[ident] = res
 				else:
-					pass # do nothing, otherwise expressions() always spits out an error
+					_set_err("Unexpected keyword '" + tokens[pos][0] + "'")
+					pos += 1
 		if res: pos += 1
 		return res
 
