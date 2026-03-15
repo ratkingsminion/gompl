@@ -6,8 +6,6 @@ extends RefCounted
 ## and https://jayconrod.com/posts/65/how-to-build-a-parser-by-hand
 ## and https://craftinginterpreters.com/parsing-expressions.html
 
-static var undefined: _Undefined = _Undefined.new() # only use this
-
 const _IGNORE := "IGN"
 const _RESERVED := "RSV"
 const _INT := "INT"
@@ -49,6 +47,7 @@ const T_NUMBER = &"number"
 const T_STRING = &"string"
 const T_BOOL = &"bool"
 const T_UNDEFINED = &"undefined"
+
 var _registered_funcs: Dictionary
 
 ###
@@ -64,7 +63,7 @@ func register_func(func_name: String, callable: Callable, param_types: Array[Str
 	if not func_name or not callable: printerr("Invalid function registration"); return
 	if func_name in _registered_funcs: printerr("Function name already registered"); return
 	_registered_funcs[func_name] = [ callable, param_types, optional_params ]
-
+	
 func unregister_func(func_name: String) -> void:
 	_registered_funcs.erase(func_name)
 
@@ -123,33 +122,36 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 	while not err and pos < it.size():
 		if (state is StringName and state == &"interrupted") or (state is Dictionary and &"interrupted" in state):
 			break
+		var line: int = it[pos][0]
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
 		match it[pos][1]:
 			"undefined":
-				stack.push_back(Gompl.undefined)
+				stack.push_back(Undefined.new(line))
 			"bin_logic":
 				var l = stack.pop_back()
 				if it[pos][2] == "and":
-					if not l or l is _Undefined: stack.push_back(false); pos = it[pos][3] - 1
+					if not l or l is Undefined: stack.push_back(false); pos = it[pos][3] - 1
 				elif it[pos][2] == "or":
-					if l and l is not _Undefined: stack.push_back(true); pos = it[pos][3] - 1
+					if l and l is not Undefined: stack.push_back(true); pos = it[pos][3] - 1
 			"bin_logic_end":
 				var r = stack.pop_back()
-				stack.push_back(r and r is not _Undefined)
+				stack.push_back(r and r is not Undefined)
 			"bin":
 				var l = stack.pop_back()
 				var r = stack.pop_back()
 				if it[pos][2] == "==":
 					if _is_string(l) and _is_string(r): stack.push_back(l == r)
 					elif _is_number(l) and _is_number(r): stack.push_back(l == r)
+					elif l is Undefined and r is Undefined: stack.push_back(true)
 					else: stack.push_back(typeof(l) == typeof(r) and l == r)
 				elif it[pos][2] == "!=":
 					if _is_string(l) and _is_string(r): stack.push_back(l != r)
 					elif _is_number(l) and _is_number(r): stack.push_back(l != r)
+					elif l is Undefined and r is Undefined: stack.push_back(false)
 					else: stack.push_back(typeof(l) != typeof(r) or l != r)
-				elif l is _Undefined or r is _Undefined:
+				elif (l is Undefined or r is Undefined) and it[pos][2] not in [ "+", "%" ]:
 					_set_err_runtime(it[pos], "Can't use undefined variable in binary op '" + it[pos][2] + "'")
-					stack.push_back(Gompl.undefined)
+					stack.push_back(Undefined.new(line))
 				elif it[pos][2] in [ "+", "-", "*", "/", "%" ]:
 					#print(">>> ", l, " ", it[pos][1], " ", r)
 					match it[pos][2]:
@@ -158,24 +160,24 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 							else: stack.push_back(l + r)
 						"-":
 							if _is_string(l): stack.push_back(l.replace(str(r), ""))
-							elif _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '-'"); stack.push_back(Gompl.undefined)
+							elif _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '-'"); stack.push_back(Undefined.new(line))
 							else: stack.push_back(l - r)
 						"*":
 							if _is_string(l) and _is_number(r): stack.push_back(l.repeat(r))
 							elif _is_number(l) and _is_string(r): stack.push_back(r.repeat(l))
-							elif _is_string(l) and _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '*'"); stack.push_back(Gompl.undefined)
+							elif _is_string(l) and _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '*'"); stack.push_back(Undefined.new(line))
 							else: stack.push_back(l * r)
 						"/":
-							if _is_string(l) or _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '/'"); stack.push_back(Gompl.undefined)
-							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
+							if _is_string(l) or _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '/'"); stack.push_back(Undefined.new(line))
+							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Undefined.new(line))
 							else: stack.push_back(l / r)
 						"%":
-							if _is_string(l) or _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '%'"); stack.push_back(Gompl.undefined)
-							elif r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Gompl.undefined)
+							if _is_string(r) and not _is_string(l): _set_err_runtime(it[pos], "Incompatible types in binary op '%'"); stack.push_back(Undefined.new(line))
+							elif _is_number(r) and r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Undefined.new(line))
 							else: stack.push_back(l % r)
 				else:
 					if _is_string(l) != _is_string(r):
-						_set_err_runtime(it[pos], "Incompatible types for binary op '" + it[pos][2] + "'"); stack.push_back(Gompl.undefined)
+						_set_err_runtime(it[pos], "Incompatible types for binary op '" + it[pos][2] + "'"); stack.push_back(Undefined.new(line))
 					else:
 						match it[pos][2]:
 							"<": stack.push_back(l < r)
@@ -186,16 +188,16 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				var r = stack.pop_back()
 				match it[pos][2]:
 					"not":
-						if r is not bool: _set_err_runtime(it[pos], "Incompatible type for unary op 'not'"); stack.push_back(Gompl.undefined)
+						if r is not bool: _set_err_runtime(it[pos], "Incompatible type for unary op 'not'"); stack.push_back(Undefined.new(line))
 						else: stack.push_back(not r)
 					"-":
-						if not _is_number(r): _set_err_runtime(it[pos], "Incompatible type for unary op '-'"); stack.push_back(Gompl.undefined)
+						if not _is_number(r): _set_err_runtime(it[pos], "Incompatible type for unary op '-'"); stack.push_back(Undefined.new(line))
 						else: stack.push_back(-r)
 			"assign":
 				var res = stack.pop_back()
-				if res == null or res is _Undefined:
+				if res == null or res is Undefined:
 					env.erase(it[pos][2])
-					stack.push_back(Gompl.undefined)
+					stack.push_back(Undefined.new(line))
 				else:
 					env[it[pos][2]] = res
 					stack.push_back(res)
@@ -204,10 +206,15 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			"pop":
 				stack.pop_back()
 			"id":
-				stack.push_back(env.get(it[pos][2], Gompl.undefined))
-			"check":
-				if stack.pop_back(): stack.pop_back()
-				else: stack.push_back(Gompl.undefined); pos = it[pos][2] - 1
+				stack.push_back(env.get(it[pos][2], Undefined.new(line)))
+			"check": # conditional jump
+				#if stack.pop_back(): stack.pop_back()
+				#else: stack.push_back(Undefined.new(line)); pos = it[pos][2] - 1
+				if stack and stack.back() is not Undefined:
+					if stack.pop_back(): stack.pop_back()
+					else: pos = it[pos][2] - 1
+				else:
+					stack.push_back(Undefined.new(line)); pos = it[pos][2] - 1
 			"jump":
 				pos = it[pos][2] - 1
 			"interrupt":
@@ -216,7 +223,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			"incall":
 				var rf: Expr.Function = _registered_funcs.get(it[pos][2])
 				var res = run(rf.it, env, state, max_steps)
-				stack.push_back(res if res != null else Gompl.undefined)
+				stack.push_back(res if res != null else Undefined.new(line))
 			"excall":
 				var res
 				var rf = _registered_funcs.get(it[pos][2])
@@ -228,7 +235,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					var mlm = null if rf else target.get_method_list().filter(func(m: Dictionary) -> bool: return m.name == it[pos][2])[0]
 					for i: int in it[pos][3]:
 						var arg = stack.pop_back()
-						var a = arg if arg is not _Undefined else null
+						var a = arg if arg is not Undefined else null
 						var incomp := false
 						if rf:
 							match rf[1][i]:
@@ -237,7 +244,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 								T_BOOL: if a is not bool: incomp = true
 							if incomp:
 								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
-								stack.push_back(Gompl.undefined)
+								stack.push_back(Undefined.new(line))
 								break
 						else:
 							match mlm.args[i].type:
@@ -248,13 +255,13 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 								_: if typeof(a) != mlm.args[i].type and mlm.args[i].type != TYPE_NIL: incomp = true
 							if incomp:
 								_set_err_runtime(it[pos], str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", type_string(mlm.args[i].type), "'"))
-								stack.push_back(Gompl.undefined)
+								stack.push_back(Undefined.new(line))
 								break
 						args.append(a)
 					if not err:
 						if rf: res = rf[0].callv(args)
 						else: res = target.callv(it[pos][2], args)
-				stack.push_back(res if res != null else Gompl.undefined)
+				stack.push_back(res if res != null else Undefined.new(line))
 		
 		pos += 1
 		step += 1
@@ -328,8 +335,7 @@ func _lex(code: String) -> Array[Array]:
 
 ### EXPRESSIONS
 
-class _Undefined extends Expr:
-	func _init() -> void: pass
+class Undefined extends Expr:
 	func _to_string() -> String: return "undefined"
 	func compile(_gompl: Gompl, it: Array[Array], _scope_stack: Array[Scope]) -> void: it.append([ _line, "undefined" ])
 
@@ -420,15 +426,13 @@ class Expr:
 		func _init(ln: int, c: Array[Expr], b: Array[Expr]) -> void: super(ln); conds = c; bodies = b
 		func _to_string() -> String: return str("If(", conds, ", ", bodies.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
-			var check: Array
 			var jumps: Array[Array]
 			for i: int in conds.size():
-				if check: check.append(it.size())
 				conds[i].compile(gompl, it, scope_stack)
-				check = [ _line, "check" ]; it.append(check)
+				var check := [ _line, "check" ]; it.append(check)
 				bodies[i].compile(gompl, it, scope_stack)
 				jumps.append([ _line, "jump" ]); it.append(jumps[-1])
-			check.append(it.size())
+				check.append(it.size())
 			if bodies.size() > conds.size():
 				bodies[-1].compile(gompl, it, scope_stack)
 			for j in jumps:
@@ -443,7 +447,7 @@ class Expr:
 			var scope := Scope.new(start_pos)
 			scope_stack.push_back(scope)
 			cond.compile(gompl, it, scope_stack)
-			var check = [ _line, "check" ]; it.append(check)
+			var check := [ _line, "check" ]; it.append(check)
 			body.compile(gompl, it, scope_stack)
 			it.append([ _line, "jump", start_pos ])
 			check.append(it.size())
@@ -461,7 +465,7 @@ class Expr:
 			else: 
 				var jump = [ _line, "jump" ]
 				if op == "stop":
-					it.append([ _line, "undefined" ])
+					#it.append([ _line, "undefined" ]) # TEST - it.pop_back() returns last value?
 					scope_stack.back().stops.append(jump)
 				elif op == "skip":
 					jump.append(scope_stack.back().start_pos)
@@ -632,7 +636,7 @@ class Parser:
 		_err_pos = pos
 		var ln: int = tokens[pos][2]
 		match tokens[pos][1]:
-			_UNDEFINED: res = Gompl.undefined
+			_UNDEFINED: res = Undefined.new(ln)
 			_BOOL: res = Expr.Literal.new(ln, tokens[pos][0] == "true")
 			_FLOAT: res = Expr.Literal.new(ln, float(tokens[pos][0]))
 			_INT: res = Expr.Literal.new(ln, int(tokens[pos][0]))

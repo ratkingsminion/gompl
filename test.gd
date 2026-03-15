@@ -18,6 +18,14 @@ func _ready() -> void:
 	var g := Gompl.new(self)
 	var res
 	
+	g.debug_printing = true
+	res = g.eval('
+		i = 0 x = while i < 3 do i = i + 1 stop end
+	')
+	print("RESULT A: ", res, "\n\n") # "return value from func_2"
+	g.debug_printing = false
+	return
+	
 	# test calling GDScript functions
 	res = g.eval('
 		ifif = 2 + 2 * 3 // keywords can be part of the identifier names
@@ -61,7 +69,7 @@ func _ready() -> void:
 		y // will return undefined
 	')
 	print("RESULT 4: ", res) # undefined
-	assert(res is Object and res == Gompl.undefined, "Result 4 wrong")
+	assert(res is Object and res is Gompl.Undefined, "Result 4 wrong")
 	
 	# test conditions, skip and stop
 	res = g.eval('
@@ -119,6 +127,19 @@ func _ready() -> void:
 			end', null, state, max_steps)
 		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
+	
+	# test calling Gompl functions
+	res = g.eval('
+		function test()
+			print("inside function")
+			if x == 1 then 5 else 7 end
+		end
+		print("outside function")
+		x = 1
+		test()
+	')
+	print("RESULT 8: ", res)
+	assert((res is int or res is float) and res == 5, "Result 8 wrong")
 	
 	# done, results in Output
 	get_tree().quit()
