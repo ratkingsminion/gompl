@@ -18,14 +18,6 @@ func _ready() -> void:
 	var g := Gompl.new(self)
 	var res
 	
-	g.debug_printing = true
-	res = g.eval('
-		i = 0 x = while i < 3 do i = i + 1 stop end
-	')
-	print("RESULT A: ", res, "\n\n") # "return value from func_2"
-	g.debug_printing = false
-	return
-	
 	# test calling GDScript functions
 	res = g.eval('
 		ifif = 2 + 2 * 3 // keywords can be part of the identifier names
