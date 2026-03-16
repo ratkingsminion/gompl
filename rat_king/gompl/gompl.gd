@@ -221,7 +221,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				else: state = { &"interrupted": res }
 			"incall":
 				var rf: Expr.Function = _registered_funcs.get(it[pos][2])
-				var res = run(rf.it, env, state, max_steps)
+				var res = run(rf.it, env, state, max_steps - step)
 				stack.push_back(res if res != null else Undefined.new(line))
 			"excall":
 				var res
@@ -478,7 +478,10 @@ class Expr:
 		func _to_string() -> String: return str("Function(", body, ")")
 		func _adds_instructions() -> bool: return false
 		func compile(gompl: Gompl, _it: Array[Array], _scope_stack: Array[Scope]) -> void:
-			body.compile(gompl, it, [])
+			var start_pos := it.size()
+			var scope := Scope.new(start_pos)
+			body.compile(gompl, it, [ scope ])
+			for s: Array in scope.stops: s.append(it.size()) # jump targets of stops
 	class FnCall extends Expr:
 		var method: String
 		var params: Array[Expr]

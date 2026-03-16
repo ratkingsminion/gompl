@@ -24,7 +24,7 @@ func _ready() -> void:
 		func_1()
 		func_2("foo", ifif)
 	')
-	print("RESULT 1: ", res) # "return value from func_2"
+	print("RESULT 1: ", res, "\n") # "return value from func_2"
 	assert(res is String and res == "return value from func_2", "Result 1 wrong")
 	
 	# test factorial code
@@ -37,7 +37,7 @@ func _ready() -> void:
 		end
 		p // the last expression is the result of the eval() call
 	')
-	print("RESULT 2: ", res) # 120
+	print("RESULT 2: ", res, "\n") # 120
 	assert((res is int or res is float) and res == 120, "Result 2 wrong")
 	
 	# test custom env Dictionary, and some assignments
@@ -51,7 +51,7 @@ func _ready() -> void:
 		t - 50 == 0
 	', env)
 	print("RESULT 3: ", res) # true
-	print("-> WITH ENVIRONMENT: ", env)
+	print("-> WITH ENVIRONMENT: ", env, "\n")
 	assert((res is bool) and res == true, "Result 3 wrong")
 	
 	# test undefined (similar to null in GDScript)
@@ -60,7 +60,7 @@ func _ready() -> void:
 		if y == undefined then print("y is not defined") end
 		y // will return undefined
 	')
-	print("RESULT 4: ", res) # undefined
+	print("RESULT 4: ", res, "\n") # undefined
 	assert(res is Object and res is Gompl.Undefined, "Result 4 wrong")
 	
 	# test conditions, skip and stop
@@ -77,7 +77,7 @@ func _ready() -> void:
 			print(x)
 		end
 	')
-	print("RESULT 5: ", res) # 6
+	print("RESULT 5: ", res, "\n") # 6
 	assert((res is int or res is float) and res == 6, "Result 5 wrong")
 	
 	# test string stuff
@@ -86,7 +86,7 @@ func _ready() -> void:
 		print("hello " * 3 + "world") // multiplying repeats the word
 		"number test: " + 3.141 + " " + 1000
 	')
-	print("RESULT 6: ", res) # number test: 3.141 1000
+	print("RESULT 6: ", res, "\n") # number test: 3.141 1000
 	assert((res is String) and res == "number test: 3.141 1000", "Result 6 wrong")
 	
 	# test function
@@ -101,7 +101,7 @@ func _ready() -> void:
 			x
 		end
 	')
-	print("RESULT 7: ", res) # 13
+	print("RESULT 7: ", res, "\n") # 13
 	assert((res is int or res is float) and res == 13, "Result 7 wrong")
 	
 	# test endless loop and max steps of code execution
@@ -110,7 +110,7 @@ func _ready() -> void:
 	for i in 10:
 		# this compiles the code again on every step, which is wasteful
 		# better use g.run() instead
-		g.eval('
+		res = g.eval('
 			x = 0
 			while true do
 				x = x + 1
@@ -118,18 +118,20 @@ func _ready() -> void:
 			end', null, state, max_steps)
 		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
+	print("RESULT 8: ", res, "\n")
 	
 	# test calling Gompl functions
 	res = g.eval('
 		function test()
-			print("inside function")
-			if x == 1 then 5 else 7 end
+			print("inside function test()")
+			if x == 0 then stop // use stop like "return"
+			elif x == 1 then 5 else 7 end
 		end
-		print("outside function")
+		print("outside function test()")
 		x = 1
 		test()
-	')
-	print("RESULT 8: ", res)
+	', null, null, 200)
+	print("RESULT 9: ", res, "\n")
 	assert((res is int or res is float) and res == 5, "Result 8 wrong")
 	
 	# done, results in Output

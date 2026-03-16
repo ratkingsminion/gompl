@@ -67,4 +67,4 @@ Using `interrupt` will exit the script, but when providing a state `Dictionary` 
 
 All flow control keywords (`stop`, `skip` and `interrupt`) allow the modifier `with` with an expression afterwards, which is then the result of the loop.
 
-Gompl functions do not (yet) allow any parameters, and they always return the result of the last expression in the body.
+Gompl functions do not (yet) allow any parameters, and they always return the result of the last expression in the body, though `stop` and `stop with <expression>` are allowed inside functions for a premature return. (`skip` is allowed too - it returns to the function's beginning, which might be an interesting side effect.)
