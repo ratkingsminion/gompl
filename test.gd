@@ -72,11 +72,10 @@ func _ready() -> void:
 				print("no three for thee")
 				skip
 			elif x == 6 then
-				stop
+				stop with x // the "with" part is optional
 			end
 			print(x)
 		end
-		x
 	')
 	print("RESULT 5: ", res) # 6
 	assert((res is int or res is float) and res == 6, "Result 5 wrong")
@@ -134,4 +133,5 @@ func _ready() -> void:
 	assert((res is int or res is float) and res == 5, "Result 8 wrong")
 	
 	# done, results in Output
+	await get_tree().process_frame
 	get_tree().quit()

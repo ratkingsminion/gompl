@@ -34,7 +34,7 @@ const _TOKEN_TERM: Array[String] = [ "-", "+" ]
 const _TOKEN_FACTOR: Array[String] = [ "/", "*", "%" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt", "function" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt", "with", "function" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
@@ -120,7 +120,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 	var pos: int = 0 if state is not Dictionary else state.get(&"pos", 0)
 	
 	while not err and pos < it.size():
-		if (state is StringName and state == &"interrupted") or (state is Dictionary and &"interrupted" in state):
+		if state is Dictionary and &"interrupted" in state:
 			break
 		var line: int = it[pos][0]
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
@@ -208,8 +208,6 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			"id":
 				stack.push_back(env.get(it[pos][2], Undefined.new(line)))
 			"check": # conditional jump
-				#if stack.pop_back(): stack.pop_back()
-				#else: stack.push_back(Undefined.new(line)); pos = it[pos][2] - 1
 				if stack and stack.back() is not Undefined:
 					if stack.pop_back(): stack.pop_back()
 					else: pos = it[pos][2] - 1
@@ -218,8 +216,9 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			"jump":
 				pos = it[pos][2] - 1
 			"interrupt":
-				if state is Dictionary: state[&"interrupted"] = true
-				else: state = &"interrupted"
+				var res = stack.pop_back() if it[pos][2] else null
+				if state is Dictionary: state[&"interrupted"] = res
+				else: state = { &"interrupted": res }
 			"incall":
 				var rf: Expr.Function = _registered_funcs.get(it[pos][2])
 				var res = run(rf.it, env, state, max_steps)
@@ -266,8 +265,8 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 		pos += 1
 		step += 1
 		if max_steps > 0 and step >= max_steps:
-			if state is Dictionary: state[&"interrupted"] = true
-			else: state = &"interrupted"
+			if state is Dictionary: state[&"interrupted"] = null
+			else: state = { &"interrupted": null }
 	
 	if err: printerr(err); return null
 	
@@ -276,10 +275,9 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 		state[&"pos"] = pos
 		state[&"env"] = env
 		state[&"steps"] = step
+		var res = state[&"interrupted"]
 		state.erase(&"interrupted")
-		return null
-	elif state is StringName and state == &"interrupted":
-		return null
+		return res
 	
 	if debug_printing and stack: print("RESULT: ", stack.back())
 	if debug_printing: print("ENVIRONMENT: ", env)
@@ -454,20 +452,23 @@ class Expr:
 			for s: Array in scope.stops: s.append(it.size()) # jump targets of stops
 			scope_stack.erase(scope)
 	class FlowControl extends Expr:
+		var with: Expr
 		var op: String
-		func _init(ln: int, o: String) -> void: super(ln); op = o
-		func _to_string() -> String: return str("Stop()")
+		func _init(ln: int, o: String, w: Expr) -> void: super(ln); op = o; with = w
+		func _to_string() -> String: return str("Stop(", str(with) if with else "", ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			if op == "interrupt":
-				it.append([ _line, "interrupt" ])
+				if with: with.compile(gompl, it, [])
+				it.append([ _line, "interrupt", true if with else false ])
 			elif not scope_stack:
 				_set_err(gompl, "Unexpected '" + op + "'")
 			else: 
 				var jump = [ _line, "jump" ]
 				if op == "stop":
-					#it.append([ _line, "undefined" ]) # TEST - it.pop_back() returns last value?
+					if with: with.compile(gompl, it, [])
 					scope_stack.back().stops.append(jump)
 				elif op == "skip":
+					if with: with.compile(gompl, it, [])
 					jump.append(scope_stack.back().start_pos)
 				it.append(jump)
 	class Function extends Expr:
@@ -485,15 +486,11 @@ class Expr:
 		func _to_string() -> String: return str("FnCall('", method, "', ", params.map(func(i): return i), ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope]) -> void:
 			var rf = gompl._registered_funcs.get(method)
-			
-			if rf is Function:
-				it.append([ _line, "incall", method, 0 ])
-				return
-				
 			if not rf and (not gompl.target or not gompl.target.has_method(method)):
 				_set_err(gompl, str("Can not call function '", method, "'"))
 				return
 			elif rf:
+				if rf is Function: it.append([ _line, "incall", method, 0 ]); return
 				if params.size() < rf[1].size() - rf[2]: _set_err(gompl, str("Too few parameters for function '", method, "'")); return
 				if params.size() > rf[1].size(): _set_err(gompl, str("Too many parameters for function '", method, "'")); return
 			else:
@@ -703,12 +700,16 @@ class Parser:
 						if not body: _set_err("Expect body after 'do'")
 						elif pos >= tcount: _set_err("Expect 'end' after while-body, early EOF")
 						else: res = Expr.While.new(ln, cond, body)
-				elif tokens[pos][0] == "stop":
-					res = Expr.FlowControl.new(ln, "stop")
-				elif tokens[pos][0] == "skip":
-					res = Expr.FlowControl.new(ln, "skip")
-				elif tokens[pos][0] == "interrupt":
-					res = Expr.FlowControl.new(ln, "interrupt")
+				elif tokens[pos][0] in [ "stop", "skip", "interrupt" ]:
+					var fc: String = tokens[pos][0]
+					var with: Expr
+					if pos < tcount - 1 and tokens[pos + 1][0] == "with":
+						pos += 2
+						with = expression()
+						if not with: _set_err("Expect expression after 'with'")
+						else: pos -= 1
+					if not gompl.err:
+						res = Expr.FlowControl.new(ln, fc, with)
 				elif tokens[pos][0] == "function":
 					pos += 1
 					if pos >= tcount: _set_err("Expect identifier after 'function', early EOF")
