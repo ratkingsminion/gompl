@@ -132,7 +132,21 @@ func _ready() -> void:
 		test()
 	', null, null, 200)
 	print("RESULT 9: ", res, "\n")
-	assert((res is int or res is float) and res == 5, "Result 8 wrong")
+	assert((res is int or res is float) and res == 5, "Result 9 wrong")
+	
+	# test calling Gompl functions recusrively
+	g.debug_printing = true
+	res = g.eval('
+		function a()
+			i = i + 1
+			if i < 1000 then a() end
+			i = i + 1
+		end
+		i = 0
+		a()
+	')
+	print("RESULT 10: ", res, "\n")
+	assert((res is int or res is float) and res == 2000, "Result 10 wrong")
 	
 	# done, results in Output
 	await get_tree().process_frame
