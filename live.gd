@@ -1,6 +1,6 @@
 extends Sprite2D
 
-@export_multiline var code := "while true do\n\tdt = get_process_delta_time()\n\trotate(4 * dt)\n\t// move_local_x(5)\n\tinterrupt\nend"
+@export_multiline var code := "speed = array(-2, 5, 20).pick_random()\nwhile true do\n\tdt = get_process_delta_time()\n\trotate(speed * dt)\n\t// move_local_x(5)\n\tinterrupt\nend"
 @export var code_editor: TextEdit
 @export var code_compile: Button
 @export var code_error: Label
