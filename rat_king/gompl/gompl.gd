@@ -203,8 +203,6 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 							"<=": stack.push_back(l <= r)
 							">": stack.push_back(l > r)
 							">=": stack.push_back(l >= r)
-			"access":
-				print("ACCESS")
 			"unary":
 				var r = stack.pop_back()
 				match it[pos][2]:
