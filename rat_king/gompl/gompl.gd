@@ -222,10 +222,11 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					stack.push_back(res)
 			"arrassign":
 				var arr = stack.pop_back()
+				var idx = stack.pop_back()
 				var res = stack.back()
 				if res is Undefined: res = null
-				if arr[1] >= arr[0].size() or arr[1] < -arr[0].size(): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
-				else: arr[0][arr[1]] = res
+				if idx >= arr.size() or idx < -arr.size(): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+				else: arr[idx] = res
 			"literal":
 				stack.push_back(it[pos][2])
 			"pop":
@@ -270,10 +271,12 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			"arraccess":
 				var idx := int(stack.pop_back())
 				var arr = stack.pop_back()
-				if arr is not Array: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line)) 
-				elif idx >= arr.size() or idx < -arr.size(): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
-				elif it[pos][2]: stack.push_back([ arr, idx ])
-				else: stack.push_back(arr[idx])
+				if arr is Array or arr is String:
+					if idx >= len(arr) or idx < -len(arr): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+					elif it[pos][2] and arr is Array: stack.push_back(idx); stack.push_back(arr) # is left side
+					elif it[pos][2]: _set_err_runtime(it[pos], str("Can't use String array access on left side")); stack.push_back(Undefined.new(line)) 
+					else: stack.push_back(arr[idx])
+				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line)) 
 
 		pos += 1
 		step += 1
