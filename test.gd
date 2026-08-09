@@ -119,18 +119,22 @@ func _ready() -> void:
 			x = 0
 			while true do
 				x = x + 1
-				if x > 100 then interrupt end // premature script exit
+				if x > 100 then
+					interrupt with x // premature script exit
+				end
 			end', null, state, max_steps)
 		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
 	print("RESULT 8: ", res, "\n")
+	assert((res is int or res is float) and res == 104, "Result 8 wrong")
 	
 	# test calling Gompl functions
 	res = g.eval('
 		function test()
 			print("inside function test()")
 			if x == 0 then stop // use stop like "return"
-			elif x == 1 then 5 else 7 end
+			elif x == 1 then 5
+			else 7 end
 		end
 		print("outside function test()")
 		x = 1
@@ -138,6 +142,9 @@ func _ready() -> void:
 	', null, null, 200)
 	print("RESULT 9: ", res, "\n")
 	assert((res is int or res is float) and res == 5, "Result 9 wrong")
+	
+	# Attention: `g` keeps the `function test()` when the next call of `g.eval()` has the `clear_internal_funcs`
+	# parameter set to `false` (default is `true`) - this way you could reuse it
 	
 	# test calling Gompl functions recursively
 	res = g.eval('
