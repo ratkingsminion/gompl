@@ -39,12 +39,12 @@ const _TOKEN_ACCESSOR: Array[String] = [ "." ]
 const _TOKEN_BINARY_OPERATOR: Array[String] = [ "+", "-", "*", "/", "%" ]
 const _TOKEN_BINARY_OPERATOR_ALLOWING_UNDEFINED: Array[String] = [ "+", "%" ]
 const _TOKEN_FLOW_CONTROL: Array[String] = [ "stop", "skip", "interrupt" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt", "with", "function", "array" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt", "with", "function", "array", "dictionary" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
 enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_ARR, LITERAL, POP,
-	IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, ACCESS_ARR }
+	IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, ACCESS_ARR, DICTIONARY }
 
 var debug_printing := false
 var err: String
@@ -55,6 +55,7 @@ const T_NUMBER = &"number"
 const T_STRING = &"string"
 const T_BOOL = &"bool"
 const T_ARRAY = &"array"
+const T_DICTIONARY = &"dictionary"
 const T_UNDEFINED = &"undefined"
 
 var _registered_in_funcs: Dictionary
@@ -108,7 +109,7 @@ func parse_tokens(tokens: Array[Array], clear_internal_funcs := true) -> Expr:
 	if debug_printing: print("AST: ", ast)
 	return ast
 	
-## Step 3 - compile the AST to an arry of instructions, compiled via the AST
+## Step 3 - compile the AST to an arry of instructions
 func compile(ast: Expr) -> Array[Array]:
 	err = ""
 	var it: Array[Array]
@@ -121,7 +122,7 @@ func compile(ast: Expr) -> Array[Array]:
 		for f: Expr.Function in _registered_in_funcs.values(): f.compile_deferred(self, it)
 	scope.init_stops(it.size())
 	if err: printerr(err); return []
-	if debug_printing and it: print("INSTRUCTIONS: ", it)
+	if debug_printing and it: print("INSTRUCTIONS: ", it.map(func(a: Array) -> Array: var b: Array = a.duplicate(); b[1] = Instruction.keys()[b[1]]; return b))
 	return it
 
 ## Step 4 - iterate over the array of instructions, using it as a lower level language
@@ -228,7 +229,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				var idx = stack.pop_back()
 				var res = stack.back()
 				if res is Undefined: res = null
-				if idx >= arr.size() or idx < -arr.size(): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+				if arr is Array and (idx >= arr.size() or idx < -arr.size()): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
 				else: arr[idx] = res
 			Instruction.LITERAL:
 				stack.push_back(it[pos][2])
@@ -237,7 +238,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			Instruction.IDENTIFIER:
 				stack.push_back(env.get(it[pos][2], Undefined.new(line)))
 			Instruction.CHECK: # conditional jump
-				if stack: # and stack.back() is not Undefined:
+				if stack:
 					var r = stack.pop_back()
 					if r and r is not Undefined: stack.pop_back()
 					else: pos = it[pos][2] - 1
@@ -253,9 +254,10 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				var obj = stack.pop_back() # get the object to access with a method
 				var f: String = it[pos][2]
 				match typeof(obj):
-					TYPE_OBJECT: _excall(stack, line, it[pos], obj)
+					#TYPE_OBJECT: _excall(stack, line, it[pos], obj) # unsafe!
 					TYPE_ARRAY: _excall(stack, line, it[pos], ArrayProxy.new(obj))
-					_:_set_err_runtime(it[pos], str("Invalid target object for method '", f, "'")); stack.push_back(Undefined.new(line)) 
+					TYPE_DICTIONARY: _excall(stack, line, it[pos], DictionaryProxy.new(obj))
+					_: _set_err_runtime(it[pos], str("Invalid target object for method '", f, "'")); stack.push_back(Undefined.new(line)) 
 			Instruction.CALL_INTERNAL:
 				var rf: Expr.Function = _registered_in_funcs.get(it[pos][2])
 				returns.push_back(pos)
@@ -272,15 +274,24 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					res[i] = elem if elem is not Undefined else null
 				stack.push_back(res)
 			Instruction.ACCESS_ARR:
-				var idx := int(stack.pop_back())
+				var idx = stack.pop_back()
 				var arr = stack.pop_back()
-				if arr is Array or arr is String:
-					if idx >= len(arr) or idx < -len(arr): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
-					elif it[pos][2] and arr is Array: stack.push_back(idx); stack.push_back(arr) # is left side
+				if _is_container(arr) or _is_string(arr):
+					if _is_str_or_arr(arr) and not _is_number(idx): _set_err_runtime(it[pos], str("Array access must be a number")); stack.push_back(Undefined.new(line)) 
+					elif _is_str_or_arr(arr) and (idx >= len(arr) or idx < -len(arr)): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+					elif not it[pos][2] and arr is Dictionary and idx not in arr: _set_err_runtime(it[pos], str("Dictionary access needs existing key")); stack.push_back(Undefined.new(line)) 
+					elif it[pos][2] and _is_container(arr): stack.push_back(idx); stack.push_back(arr) # is left side
 					elif it[pos][2]: _set_err_runtime(it[pos], str("Can't use String array access on left side")); stack.push_back(Undefined.new(line)) 
 					else: stack.push_back(arr[idx])
-				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line)) 
-
+				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line))
+			Instruction.DICTIONARY:
+				var res: Dictionary
+				for i: int in range(0, it[pos][2], 2):
+					var key = stack.pop_back() # TODO
+					var val = stack.pop_back()
+					res[key if key is not Undefined else null] = val if val is not Undefined else null
+				stack.push_back(res)
+		
 		pos += 1
 		step += 1
 		if max_steps > 0 and step >= max_steps:
@@ -305,21 +316,20 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 
 func _excall(stack: Array, line: int, it_at_pos: Array, t, rf = null):
 	var res
-	if not rf and not (t and t.has_method(it_at_pos[2])): # check existence of method again - TODO always?
+	var mn: String = it_at_pos[2]
+	if t is Proxy: mn = str(t._prefix, mn) # proxy call for safe object access
+	if not rf and not (t and t.has_method(mn)): # check existence of method again - TODO always?
 		_set_err_runtime(it_at_pos, str("Method '", it_at_pos[2], "' not found"))
 		stack.push_back(Undefined.new(line))
-	#elif not it_at_pos[3]: # no arguments
-		#if rf: res = rf[0].call()
-		#else: res = t.call(it_at_pos[2])
-	#else:
+		return null
 	var args = []
-	var mlm = null if rf else t.get_method_list().filter(func(m: Dictionary) -> bool: return m.name == it_at_pos[2])[0]
+	var mlm = null if rf else t.get_method_list().filter(func(m: Dictionary) -> bool: return m.name == mn)[0]
 	if not rf: # check argument count again - TODO always?
 		if it_at_pos[3] > mlm.args.size():
-			_set_err_runtime(it_at_pos, str("Too many parameters for method '", it_at_pos[2], "'"))
+			_set_err_runtime(it_at_pos, str("Too many parameters for method '", mn, "'"))
 			stack.push_back(Undefined.new(line))
 		elif it_at_pos[3] < mlm.args.size() - mlm.default_args.size():
-			_set_err_runtime(it_at_pos, str("Too few parameters for method '", it_at_pos[2], "'"))
+			_set_err_runtime(it_at_pos, str("Too few parameters for method '", mn, "'"))
 			stack.push_back(Undefined.new(line))
 	if not err:
 		for i: int in it_at_pos[3]:
@@ -328,18 +338,19 @@ func _excall(stack: Array, line: int, it_at_pos: Array, t, rf = null):
 			var incomp := false
 			if rf:
 				match rf[1][i]:
-					T_NUMBER: if a is not int and a is not float: incomp = true
-					T_STRING: if a is not String and a is not StringName: incomp = true
+					T_NUMBER: if not _is_number(a): incomp = true
+					T_STRING: if not _is_string(a): incomp = true
 					T_BOOL: if a is not bool: incomp = true
 					T_ARRAY: if a is not Array: incomp = true
+					T_DICTIONARY: if a is not Dictionary: incomp = true
 				if incomp:
 					_set_err_runtime(it_at_pos, str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
 					stack.push_back(Undefined.new(line))
 					break
 			else:
 				match mlm.args[i].type:
-					TYPE_INT, TYPE_FLOAT: if a is not int and a is not float: incomp = true
-					TYPE_STRING, TYPE_STRING_NAME: if a is not String and a is not StringName: incomp = true
+					TYPE_INT, TYPE_FLOAT: if not _is_number(a): incomp = true
+					TYPE_STRING, TYPE_STRING_NAME: if not _is_string(a): incomp = true
 					TYPE_ARRAY: if a is not Array: incomp = true
 					_: if typeof(a) != mlm.args[i].type and mlm.args[i].type != TYPE_NIL: incomp = true
 				if incomp:
@@ -349,7 +360,7 @@ func _excall(stack: Array, line: int, it_at_pos: Array, t, rf = null):
 			args.append(a)
 		if not err:
 			if rf: res = rf[0].callv(args)
-			else: res = t.callv(it_at_pos[2], args)
+			else: res = t.callv(mn, args)
 	stack.push_back(res if res != null else Undefined.new(line))
 	return res
 
@@ -368,6 +379,12 @@ func _is_string(v) -> bool:
 
 func _is_number(v) -> bool:
 	return v is int or v is float
+
+func _is_str_or_arr(v) -> bool:
+	return v is Array or v is String or v is StringName
+
+func _is_container(v) -> bool:
+	return v is Array or v is Dictionary
 
 ### LEXER
 
@@ -413,45 +430,76 @@ class Scope:
 	func _init(p: int) -> void: start_pos = p
 	func init_stops(p: int) -> void: for s: Array in stops: s.append(p) # jump targets of stops
 
-class ArrayProxy:
+class Proxy:
+	var _prefix: String
+	func _init(prefix := "_proxy_") -> void:
+		_prefix = prefix
+
+class ArrayProxy extends Proxy:
 	var array: Array
 	# no filter, map, reduce
-	# no get or set, use element access
-	func _init(a: Array) -> void: array = a
-	func append(e) -> Array: array.append(e); return array
-	func append_array(a: Array) -> Array: array.append_array(a); return array
-	func assign(a: Array) -> Array: array.assign(a); return array
-	func back(): return array[-1] if array else null
-	func bsearh(val, before := true) -> int: return array.bsearch(val, before)
-	func clear() -> Array: array.clear(); return array
-	func count(val) -> int: return array.count(val)
-	func duplicate(deep := false) -> Array: return array.duplicate(deep)
-	func erase(val) -> Array: array.erase(val); return array
-	func fill(val) -> Array: array.fill(val); return array
-	func find(val, from := 0) -> int: return array.find(val, from)
-	func front(): return array[0] if array else null
-	func has(val) -> bool: return val in array
-	func hash() -> int: return array.hash()
-	func insert(idx: int, val) -> Array: array.insert(idx, val); return array # TODO error check?
-	func is_empty() -> bool: return array.is_empty()
-	func max(): return array.max()
-	func min(): return array.min()
-	func pick_random(): return array.pick_random()
-	func pop_at(idx: int): return array.pop_at(idx) if idx < array.size() and idx >= -array.size() else null
-	func pop_back(): return array.pop_back()
-	func pop_front(): return array.pop_front()
-	func push_back(val) -> Array: array.push_back(val); return array
-	func push_front(val) -> Array: array.push_front(val); return array
-	func remove_at(idx: int) -> Array:
+	func _init(a: Array) -> void: super(); array = a
+	func _proxy_append(e) -> Array: array.append(e); return array
+	func _proxy_append_array(a: Array) -> Array: array.append_array(a); return array
+	func _proxy_assign(a: Array) -> Array: array.assign(a); return array
+	func _proxy_back(): return array[-1] if array else null
+	func _proxy_bsearh(val, before := true) -> int: return array.bsearch(val, before)
+	func _proxy_clear() -> Array: array.clear(); return array
+	func _proxy_count(val) -> int: return array.count(val)
+	func _proxy_duplicate(deep := false) -> Array: return array.duplicate(deep)
+	func _proxy_erase(val) -> Array: array.erase(val); return array
+	func _proxy_fill(val) -> Array: array.fill(val); return array
+	func _proxy_find(val, from := 0) -> int: return array.find(val, from)
+	func _proxy_front(): return array[0] if array else null
+	func _proxy_get(idx: int): return array[idx] if idx < array.size() and idx >= -array.size() else null
+	func _proxy_has(val) -> bool: return val in array
+	func _proxy_hash() -> int: return array.hash()
+	func _proxy_insert(idx: int, val) -> Array: array.insert(idx, val); return array # TODO error check?
+	func _proxy_is_empty() -> bool: return array.is_empty()
+	func _proxy_max(): return array.max()
+	func _proxy_min(): return array.min()
+	func _proxy_pick_random(): return array.pick_random()
+	func _proxy_pop_at(idx: int): return array.pop_at(idx) if idx < array.size() and idx >= -array.size() else null
+	func _proxy_pop_back(): return array.pop_back()
+	func _proxy_pop_front(): return array.pop_front()
+	func _proxy_push_back(val) -> Array: array.push_back(val); return array
+	func _proxy_push_front(val) -> Array: array.push_front(val); return array
+	func _proxy_remove_at(idx: int) -> Array:
 		if idx < array.size() and idx >= -array.size(): array.remove_at(idx);
 		return array
-	func resize(sz: int) -> Array: array.resize(sz); return array
-	func reverse() -> Array: array.reverse(); return array
-	func rfind(val, from := 0) -> int: return array.rfind(val, from)
-	func shuffle() -> Array: array.shuffle(); return array
-	func size() -> int: return array.size()
-	func slice(begin: int, end := 0x7FFFFFFF, step := 1, deep := false) -> Array: return array.slice(begin, end, step, deep)
-	func sort() -> Array: array.sort(); return array
+	func _proxy_resize(sz: int) -> Array: array.resize(sz); return array
+	func _proxy_reverse() -> Array: array.reverse(); return array
+	func _proxy_rfind(val, from := 0) -> int: return array.rfind(val, from)
+	func _proxy_set(idx: int, val) -> Array:
+		if idx < array.size() and idx >= -array.size(): array[idx] = val
+		return array
+	func _proxy_shuffle() -> Array: array.shuffle(); return array
+	func _proxy_size() -> int: return array.size()
+	func _proxy_slice(begin: int, end := 0x7FFFFFFF, step := 1, deep := false) -> Array: return array.slice(begin, end, step, deep)
+	func _proxy_sort() -> Array: array.sort(); return array
+
+class DictionaryProxy extends Proxy:
+	var dict: Dictionary
+	func _init(d: Dictionary) -> void: super(); dict = d
+	func _proxy_assign(d: Dictionary) -> Dictionary: dict.assign(d); return dict
+	func _proxy_clear() -> Dictionary: dict.clear(); return dict
+	func _proxy_duplicate(deep := false) -> Dictionary: return dict.duplicate(deep)
+	func _proxy_erase(key) -> Dictionary: dict.erase(key); return dict
+	func _proxy_find_key(val): return dict.find_key(val)
+	func _proxy_get(key, default = null): return dict.get(key, default)
+	func _proxy_get_or_add(key, default = null): return dict.get_or_add(key, default)
+	func _proxy_has(key) -> bool: return dict.has(key)
+	func _proxy_has_all(keys: Array) -> bool: return dict.has_all(keys)
+	func _proxy_hash() -> int: return dict.hash()
+	func _proxy_is_empty() -> bool: return dict.is_empty()
+	func _proxy_keys() -> Array: return dict.keys()
+	func _proxy_merge(d: Dictionary, overwrite := false) -> Dictionary: dict.merge(d, overwrite); return dict
+	func _proxy_merged(d: Dictionary, overwrite := false) -> Dictionary: return dict.merged(d, overwrite)
+	func _proxy_recursive_equal(d: Dictionary, recursion_count := 100) -> bool: return dict.recursive_equal(d, recursion_count)
+	func _proxy_set(key, val) -> Dictionary: dict.set(key, val); return dict # change return value of set()
+	func _proxy_size() -> int: return dict.size()
+	func _proxy_sort() -> Dictionary: dict.sort(); return dict
+	func _proxy_values() -> Array: return dict.values()
 
 class Expr:
 	var _line: int
@@ -652,6 +700,14 @@ class Expr:
 			arr.compile(gompl, it, scope_stack)
 			idx.compile(gompl, it, scope_stack)
 			it.append([ _line, Instruction.ACCESS_ARR, is_left_side ])
+	class NewDictionary extends Expr:
+		var params: Array[Expr]
+		func _init(ln: int, p: Array[Expr]) -> void: super(ln); params = p
+		func _to_string() -> String: return str("NewDictionary(", params.map(func(i): return i), ")")
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
+			for i: int in range(params.size() -1, -1, -1):
+				params[i].compile(gompl, it, scope_stack)
+			it.append([ _line, Instruction.DICTIONARY, params.size() ])
 
 ### PARSER
 
@@ -895,6 +951,10 @@ class Parser:
 					var params = _group()
 					if params != null: res = Expr.NewArray.new(ln, params)
 					else: _set_err("Expect '(' after 'array'.")
+				elif tokens[pos][0] == "dictionary":
+					var params = _group()
+					if params != null: res = Expr.NewDictionary.new(ln, params)
+					else: _set_err("Expect '(' after 'dictionary'.")
 				else:
 					_set_err("Unexpected keyword '" + tokens[pos][0] + "'")
 					pos += 1

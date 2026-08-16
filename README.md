@@ -1,10 +1,10 @@
 # Gompl
 
-*Gompl was based on IMP, a [tiny tutorial language](https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-) by Jay Conrod. I needed a small scripting language for our game project, so I ported Conrod's IMP to GDScript, extended it a bit and named it Gimpl. After a while I wasn't totally satisfied with the outcome, so I took Jay Conrod's advice and ditched the combinators approach and now use recursive descent parsing as described in [Crafting Interpreters](https://craftinginterpreters.com).*
+A simple scripting language written in GDScript with focus on safe usage (no Godot errors) for embedding. Used in [I Made A Game For You](https://medienzentrale.itch.io/a-game-for-you) and [Mops & Mobs](https://store.steampowered.com/app/2851050/).
 
 ---
 
-## Example
+## Example (GDScript with embedded Gompl code)
 
 ```GDScript
 func some_method(p):
@@ -27,7 +27,8 @@ func _ready() -> void:
 ## Limitations
 
 * All variables have global scope
-* Only `while`-`do` exists, no for-loop
+* Internal functions don't support arguments
+* Only `while`-`do` exists, no for-loop or other loop constructs
 * Probably not the best performance
 
 ## Keywords
@@ -48,6 +49,7 @@ func _ready() -> void:
 * with
 * function
 * array
+* dictionary
 
 ## Notes
 
@@ -59,7 +61,7 @@ Instead of "break" and "continue", write `stop` and `skip` in `while` loops.
 
 Everything is an expression, so you can do things like `x = if y > 10 then 2 elif y > 5 then 1 else 0 end`. Be aware that in some cases the result can be `undefined`, e.g. when the `if` condition is false and there's no `else` clause. Another case is the result of a `while` loop that was stopped via `stop` without `with` modifier.
 
-Gompl natively supports integers, floats, bools, strings, arrays and function calls. Outside functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl and/or by registering functions via Gompl's `register_func` method. Setting a target object will allow access to all of its methods, which might be undesirable.
+Gompl natively supports integers, floats, bools, strings, arrays, dictionaries and function calls. Outside functions are fed to the interpreter by setting a target Godot object whose methods are directly called by Gompl and/or by registering functions via Gompl's `register_func` method. Setting a target object will allow access to all of its methods, which might be undesirable.
 
 Using `interrupt` will exit the script, but when providing a state `Dictionary` you can continue the execution. It's also possible to limit the amount of execution steps, and interrupting the script via `state["interrupt"] = true` (i.e. inside a GDScript function called from Gompl).
 
@@ -67,4 +69,20 @@ All flow control keywords (`stop`, `skip` and `interrupt`) allow the modifier `w
 
 Gompl functions do not allow any parameters, and they return the result of the last expression in the body, though `stop` and `stop with <expression>` are allowed inside functions for a premature return. (`skip` is allowed too - it returns to the function's beginning, which might be an interesting side effect.)
 
-Arrays are initialised like this: `a = array(1, 2, 3)`, array access uses square brackets: `foo = a[0]`, `a[1] = "bar"`. Most methods of Godot's arrays are supported, apart from get(), set(), *_custom() and those using Callables, e.g. filter(). The methods are called via `a.method(<parameters>)`, and most of them return the array again. This way you can use currying, e.g. `a = array(4, 3, 2).append(1).sort()` (`a` will be `[ 1, 2, 3, 4 ]`).
+Arrays are always untyped and initialised like this: `a = array(1, 2, 3)`, array access uses square brackets: `foo = a[0]`, `a[1] = "bar"`. Most methods of Godot's arrays are supported, apart from those using Callables, e.g. filter(), and all *_custom() methods. The methods are called via `a.method(<parameters>)`, and most of them return the array again. This way you can use currying, e.g. `a = array(4, 3, 2).append(1).sort()` (`a` will be `[ 1, 2, 3, 4 ]`).
+
+Dictionaries are also supported: `d = dictionary("a", 1, "b", 2, "c", 3)`. *Initialisation will probably be changed to using colon for key value pairs.* The same rules as to arrays apply, and no method regarding types are supported. `set(key, value)` returns the dictionary itself instead of true/false like in Godot. In order to iterate over a dictionary, use `keys()` or `values()`:
+
+```Lua
+d = dictionary("name", "Klapauzius", "age", 10000, "weight", 123.4)
+d_keys = d.keys() // keys() creates an array filled with the dictionary's keys
+i = 0 while i < d.size() do
+	value = d[d_keys[i]]
+	print("Key: " + d_keys[i] + " Value: " + value)
+	i = i + 1
+end
+```
+
+## History
+
+Gompl was based on IMP, a [tiny tutorial language](https://jayconrod.com/posts/37/a-simple-interpreter-from-scratch-in-python--part-1-) by Jay Conrod. I needed a small scripting language for our game project, so I ported Conrod's IMP to GDScript, extended it a bit and named it Gimpl. After a while I wasn't totally satisfied with the outcome, so I took Jay Conrod's advice and ditched the combinators approach and now use recursive descent parsing as described in [Crafting Interpreters](https://craftinginterpreters.com).

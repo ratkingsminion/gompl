@@ -29,7 +29,7 @@ func _ready() -> void:
 		func_1()
 		func_2("foo", ifif)
 	')
-	print("RESULT 1: ", res, "\n") # "return value from func_2"
+	print("RESULT 1 (external func call): ", res, "\n") # "return value from func_2"
 	assert(res is String and res == "return value from func_2", "Result 1 wrong")
 	
 	# test factorial code
@@ -42,7 +42,7 @@ func _ready() -> void:
 		end
 		p // the last expression is the result of the eval() call
 	')
-	print("RESULT 2: ", res, "\n") # 120
+	print("RESULT 2 (factorial): ", res, "\n") # 120
 	assert((res is int or res is float) and res == 120, "Result 2 wrong")
 	
 	# test custom env Dictionary, and some assignments
@@ -55,7 +55,7 @@ func _ready() -> void:
 		r = undefined // r will be removed from env
 		t - 50 == 0
 	', env)
-	print("RESULT 3: ", res) # true
+	print("RESULT 3 (custom env): ", res) # true
 	print("-> WITH ENVIRONMENT: ", env, "\n")
 	assert((res is bool) and res == true, "Result 3 wrong")
 	
@@ -65,7 +65,7 @@ func _ready() -> void:
 		if y == undefined then print("y is not defined") end
 		y // will return undefined
 	')
-	print("RESULT 4: ", res, "\n") # undefined
+	print("RESULT 4 (undefined): ", res, "\n") # undefined
 	assert(res is Object and res is Gompl.Undefined, "Result 4 wrong")
 	
 	# test conditions, skip and stop
@@ -82,7 +82,7 @@ func _ready() -> void:
 			print(x)
 		end
 	')
-	print("RESULT 5: ", res, "\n") # 6
+	print("RESULT 5 (condition, skip, stop): ", res, "\n") # 6
 	assert((res is int or res is float) and res == 6, "Result 5 wrong")
 	
 	# test string stuff
@@ -92,7 +92,7 @@ func _ready() -> void:
 		"number test: " + 3.141 + " " + 1000
 	')
 	print("RESULT 6: ", res, "\n") # number test: 3.141 1000
-	assert((res is String) and res == "number test: 3.141 1000", "Result 6 wrong")
+	assert((res is String) and res == "number test: 3.141 1000", "Result 6 (string stuff) wrong")
 	
 	# test function
 	res = g.eval('
@@ -106,7 +106,7 @@ func _ready() -> void:
 			x
 		end
 	')
-	print("RESULT 7: ", res, "\n") # 13
+	print("RESULT 7 (internal func): ", res, "\n") # 13
 	assert((res is int or res is float) and res == 13, "Result 7 wrong")
 	
 	# test endless loop and max steps of code execution
@@ -125,7 +125,7 @@ func _ready() -> void:
 			end', null, state, max_steps)
 		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
-	print("RESULT 8: ", res, "\n")
+	print("RESULT 8 (endless loop and interrupt): ", res, "\n")
 	assert((res is int or res is float) and res == 104, "Result 8 wrong")
 	
 	# test calling Gompl functions
@@ -140,7 +140,7 @@ func _ready() -> void:
 		x = 1
 		test()
 	', null, null, 200)
-	print("RESULT 9: ", res, "\n")
+	print("RESULT 9 (internal func): ", res, "\n")
 	assert((res is int or res is float) and res == 5, "Result 9 wrong")
 	
 	# Attention: `g` keeps the `function test()` when the next call of `g.eval()` has the `clear_internal_funcs`
@@ -156,7 +156,7 @@ func _ready() -> void:
 		i = 0
 		a()
 	')
-	print("RESULT 10: ", res, "\n")
+	print("RESULT 10 (recursive func): ", res, "\n")
 	assert((res is int or res is float) and res == 2000, "Result 10 wrong")
 	
 	# test array
@@ -167,8 +167,18 @@ func _ready() -> void:
 		a[a.find(3)] = "last"
 		a
 	')
-	print("RESULT 11: ", res, "\n")
+	print("RESULT 11 (array): ", res, "\n")
 	assert((res is Array) and res[0] == "first" and res[1] == 2 and res[2] == "last", "Result 11 wrong")
+	
+	# test dictionary
+	res = g.eval('
+		d = dictionary("c", 3, "b", 2, "a", 1).sort()
+		d["d"] = 4
+		print(d)
+		d.get_or_add("e", 5)
+	')
+	print("RESULT 12 (dictionary): ", res, "\n")
+	assert((res is int or res is float) and res == 5, "Result 12 wrong")
 	
 	# done, results in Output
 	print("done.")
