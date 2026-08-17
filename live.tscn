@@ -5,13 +5,14 @@
 
 [node name="Live" type="Node2D" unique_id=54324533]
 
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=251321862 node_paths=PackedStringArray("code_editor", "code_compile", "code_error")]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=251321862 node_paths=PackedStringArray("code_editor", "code_compile", "code_error", "maxsteps_edit")]
 position = Vector2(600, 320)
 texture = ExtResource("1_yhsjk")
 script = ExtResource("2_o8brj")
 code_editor = NodePath("../Code TextEdit")
 code_compile = NodePath("../Compile Button")
 code_error = NodePath("../Error Label")
+maxsteps_edit = NodePath("../MaxSteps TextEdit")
 
 [node name="Code TextEdit" type="TextEdit" parent="." unique_id=1800817836]
 offset_left = 12.0
