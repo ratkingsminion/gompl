@@ -36,7 +36,7 @@ const _TOKEN_FACTOR: Array[String] = [ "/", "*", "%" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
 const _TOKEN_PAIR: Array[String] = [ ":" ]
-const _TOKEN_ACCESSOR: Array[String] = [ "." ]
+const _TOKEN_ACCESS: Array[String] = [ "." ]
 const _TOKEN_BINARY_OPERATOR: Array[String] = [ "+", "-", "*", "/", "%" ]
 const _TOKEN_BINARY_OPERATOR_ALLOWING_UNDEFINED: Array[String] = [ "+", "%" ]
 const _TOKEN_FLOW_CONTROL: Array[String] = [ "stop", "skip", "interrupt" ]
@@ -44,8 +44,8 @@ const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
-enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_ARR, PAIR, LITERAL, POP,
-	IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, ACCESS_ARR, DICTIONARY }
+enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_IDX, PAIR, LITERAL, POP,
+	IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, DICTIONARY, ACCESS_IDX }
 
 var debug_printing := false
 var err: String
@@ -225,13 +225,13 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				else:
 					env[it[pos][2]] = res
 					stack.push_back(res)
-			Instruction.ASSIGN_ARR:
-				var arr = stack.pop_back()
+			Instruction.ASSIGN_IDX:
+				var obj = stack.pop_back()
 				var idx = stack.pop_back()
 				var res = stack.back()
 				if res is Undefined: res = null
-				if arr is Array and (idx >= arr.size() or idx < -arr.size()): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
-				else: arr[idx] = res
+				if obj is Array and (idx >= obj.size() or idx < -obj.size()): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+				else: obj[idx] = res
 			Instruction.PAIR:
 				var value = stack.pop_back()
 				var key = stack.pop_back()
@@ -280,17 +280,6 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					var elem = stack.pop_back()
 					res[i] = elem if elem is not Undefined else null
 				stack.push_back(res)
-			Instruction.ACCESS_ARR:
-				var idx = stack.pop_back()
-				var arr = stack.pop_back()
-				if _is_container(arr) or _is_string(arr):
-					if _is_str_or_arr(arr) and not _is_number(idx): _set_err_runtime(it[pos], str("Array access must be a number")); stack.push_back(Undefined.new(line)) 
-					elif _is_str_or_arr(arr) and (idx >= len(arr) or idx < -len(arr)): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
-					elif not it[pos][2] and arr is Dictionary and idx not in arr: _set_err_runtime(it[pos], str("Dictionary access needs existing key")); stack.push_back(Undefined.new(line)) 
-					elif it[pos][2] and _is_container(arr): stack.push_back(idx); stack.push_back(arr) # is left side
-					elif it[pos][2]: _set_err_runtime(it[pos], str("Can't use String array access on left side")); stack.push_back(Undefined.new(line)) 
-					else: stack.push_back(arr[idx])
-				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line))
 			Instruction.DICTIONARY:
 				var res: Dictionary
 				for i: int in it[pos][2]:
@@ -298,6 +287,17 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					if entry is KeyValuePairProxy: res[entry.key if entry.key is not Undefined else null] = entry.value if entry.value is not Undefined else null
 					else: res[entry if entry is not Undefined else null] = null
 				stack.push_back(res)
+			Instruction.ACCESS_IDX:
+				var idx = stack.pop_back()
+				var obj = stack.pop_back()
+				if _is_container(obj) or _is_string(obj):
+					if _is_str_or_arr(obj) and not _is_number(idx): _set_err_runtime(it[pos], str("Array access must be a number")); stack.push_back(Undefined.new(line)) 
+					elif _is_str_or_arr(obj) and (idx >= len(obj) or idx < -len(obj)): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+					elif not it[pos][2] and obj is Dictionary and idx not in obj: _set_err_runtime(it[pos], str("Dictionary access needs existing key")); stack.push_back(Undefined.new(line)) 
+					elif it[pos][2] and _is_container(obj): stack.push_back(idx); stack.push_back(obj) # is left side
+					elif it[pos][2]: _set_err_runtime(it[pos], str("Can't use String array access on left side")); stack.push_back(Undefined.new(line)) 
+					else: stack.push_back(obj[idx])
+				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line))
 		
 		pos += 1
 		step += 1
@@ -581,15 +581,15 @@ class Expr:
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
 			right.compile(gompl, it, scope_stack)
 			if left is Expr.Identifier: it.append([ _line, Instruction.ASSIGN, left.name ])
-			elif left is Expr.ArrayAccess: left.compile(gompl, it, scope_stack); it.append([ _line, Instruction.ASSIGN_ARR ])
+			elif left is Expr.IdxAccess: left.compile(gompl, it, scope_stack); it.append([ _line, Instruction.ASSIGN_IDX ])
 	class Pair extends Expr:
-		var left: Expr
-		var right: Expr
-		func _init(ln: int, l: Expr, r: Expr) -> void: super(ln); left = l; right = r
-		func _to_string() -> String: return str("Pair(", left, ", ", right, ")")
+		var key: Expr
+		var value: Expr
+		func _init(ln: int, k: Expr, v: Expr) -> void: super(ln); key = k; value = v
+		func _to_string() -> String: return str("Pair(", key, ", ", value, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
-			left.compile(gompl, it, scope_stack)
-			right.compile(gompl, it, scope_stack)
+			key.compile(gompl, it, scope_stack)
+			value.compile(gompl, it, scope_stack)
 			it.append([ _line, Instruction.PAIR ])
 	class Literal extends Expr:
 		var lit
@@ -720,16 +720,6 @@ class Expr:
 			for i: int in range(params.size() -1, -1, -1):
 				params[i].compile(gompl, it, scope_stack)
 			it.append([ _line, Instruction.ARRAY, params.size() ])
-	class ArrayAccess extends Expr:
-		var arr: Expr
-		var idx: Expr
-		var is_left_side := false
-		func _init(ln: int, a: Expr, i: Expr) -> void: super(ln); arr = a; idx = i
-		func _to_string() -> String: return str("ArrayAccess('", idx, ")")
-		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
-			arr.compile(gompl, it, scope_stack)
-			idx.compile(gompl, it, scope_stack)
-			it.append([ _line, Instruction.ACCESS_ARR, is_left_side ])
 	class NewDictionary extends Expr:
 		var params: Array[Expr]
 		func _init(ln: int, p: Array[Expr]) -> void: super(ln); params = p
@@ -738,6 +728,16 @@ class Expr:
 			for i: int in range(params.size() -1, -1, -1):
 				params[i].compile(gompl, it, scope_stack)
 			it.append([ _line, Instruction.DICTIONARY, params.size() ])
+	class IdxAccess extends Expr:
+		var obj: Expr
+		var idx: Expr
+		var is_left_side := false
+		func _init(ln: int, o: Expr, i: Expr) -> void: super(ln); obj = o; idx = i
+		func _to_string() -> String: return str("IdxAccess('", idx, ")")
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
+			obj.compile(gompl, it, scope_stack)
+			idx.compile(gompl, it, scope_stack)
+			it.append([ _line, Instruction.ACCESS_IDX, is_left_side ])
 
 ### PARSER
 
@@ -775,9 +775,9 @@ class Parser:
 	func assignment() -> Expr:
 		var expr := pair()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ASSIGNMENT:
-			if expr is not Expr.Identifier and expr is not Expr.ArrayAccess:
+			if expr is not Expr.Identifier and expr is not Expr.IdxAccess:
 				_set_err("Assignment missing left side identifier"); return null
-			elif expr is Expr.ArrayAccess:
+			elif expr is Expr.IdxAccess:
 				expr.is_left_side = true
 			var ln: int = tokens[pos][2]
 			var operator: String = tokens[pos][0]
@@ -792,9 +792,9 @@ class Parser:
 		if pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_PAIR:
 			var ln: int = tokens[pos][2]
 			pos += 1
-			var right := expression()
-			if not right: _set_err("Pair missing right side expression"); return null
-			expr = Expr.Pair.new(ln, expr, right)
+			var value := expression()
+			if not value: _set_err("Pair missing value expression"); return null
+			expr = Expr.Pair.new(ln, expr, value)
 		return expr
 	
 	func op_and() -> Expr:
@@ -874,16 +874,16 @@ class Parser:
 		return accessor()
 	
 	func accessor() -> Expr:
-		var expr := array_access()
-		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ACCESSOR:
+		var expr := index_access()
+		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ACCESS:
 			var ln: int = tokens[pos][2]
 			pos += 1
 			var right := primary()
-			if not right: _set_err("Accessor has wrong right side"); return null
+			if not right: _set_err("Access operator has wrong right side"); return null
 			expr = Expr.Accessor.new(ln, expr, right)
 		return expr
 	
-	func array_access() -> Expr:
+	func index_access() -> Expr:
 		var expr := primary()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] == "[":
 			var ln: int = tokens[pos][2]
@@ -892,7 +892,7 @@ class Parser:
 			if not idx: _set_err("Expect expression inside array access")
 			elif pos >= tokens.size(): _set_err("Expect ']' after expression, early EOF")
 			elif tokens[pos][0] != "]": _set_err("Expect ']' after expression")
-			else: pos += 1; expr = Expr.ArrayAccess.new(ln, expr, idx)
+			else: pos += 1; expr = Expr.IdxAccess.new(ln, expr, idx)
 		return expr
 
 	func primary() -> Expr:
@@ -990,11 +990,11 @@ class Parser:
 				elif tokens[pos][0] == "array":
 					var params = _group()
 					if params != null: res = Expr.NewArray.new(ln, params)
-					else: _set_err("Expect '(' after 'array'.")
+					else: _set_err("Expect '(' after 'array'")
 				elif tokens[pos][0] == "dictionary":
 					var params = _group()
 					if params != null: res = Expr.NewDictionary.new(ln, params)
-					else: _set_err("Expect '(' after 'dictionary'.")
+					else: _set_err("Expect '(' after 'dictionary'")
 				else:
 					_set_err("Unexpected keyword '" + tokens[pos][0] + "'")
 					pos += 1
