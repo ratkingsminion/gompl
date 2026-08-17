@@ -17,7 +17,7 @@ const _ID := "ID"
 const _TOKEN_EXPRESSIONS: Array[String] = [
 	r"[ \n\t]+", _IGNORE, r"#[^\n]*", _IGNORE, # whitespaces
 	r"\/\/[^\n]*", _IGNORE, # comments
-	r",", _RESERVED, # separator
+	r",", _RESERVED, r":", _RESERVED, # separator
 	r"\.", _RESERVED, r"\[", _RESERVED, r"\]", _RESERVED, # access
 	r"\+", _RESERVED, r"-", _RESERVED, r"\*", _RESERVED, r"/", _RESERVED, r"\%", _RESERVED,
 	r"<=", _RESERVED, r"<", _RESERVED, r">=", _RESERVED, r">", _RESERVED,
@@ -35,6 +35,7 @@ const _TOKEN_TERM: Array[String] = [ "-", "+" ]
 const _TOKEN_FACTOR: Array[String] = [ "/", "*", "%" ]
 const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
+const _TOKEN_PAIR: Array[String] = [ ":" ]
 const _TOKEN_ACCESSOR: Array[String] = [ "." ]
 const _TOKEN_BINARY_OPERATOR: Array[String] = [ "+", "-", "*", "/", "%" ]
 const _TOKEN_BINARY_OPERATOR_ALLOWING_UNDEFINED: Array[String] = [ "+", "%" ]
@@ -43,7 +44,7 @@ const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
-enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_ARR, LITERAL, POP,
+enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_ARR, PAIR, LITERAL, POP,
 	IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, ACCESS_ARR, DICTIONARY }
 
 var debug_printing := false
@@ -231,6 +232,10 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				if res is Undefined: res = null
 				if arr is Array and (idx >= arr.size() or idx < -arr.size()): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
 				else: arr[idx] = res
+			Instruction.PAIR:
+				var value = stack.pop_back()
+				var key = stack.pop_back()
+				stack.push_back(KeyValuePairProxy.new(key, value))
 			Instruction.LITERAL:
 				stack.push_back(it[pos][2])
 			Instruction.POP:
@@ -254,9 +259,11 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				var obj = stack.pop_back() # get the object to access with a method
 				var f: String = it[pos][2]
 				match typeof(obj):
-					#TYPE_OBJECT: _excall(stack, line, it[pos], obj) # unsafe!
 					TYPE_ARRAY: _excall(stack, line, it[pos], ArrayProxy.new(obj))
 					TYPE_DICTIONARY: _excall(stack, line, it[pos], DictionaryProxy.new(obj))
+					TYPE_OBJECT:
+						if obj is Proxy: _excall(stack, line, it[pos], obj)
+						#else: _excall(stack, line, it[pos], obj) # unsafe!
 					_: _set_err_runtime(it[pos], str("Invalid target object for method '", f, "'")); stack.push_back(Undefined.new(line)) 
 			Instruction.CALL_INTERNAL:
 				var rf: Expr.Function = _registered_in_funcs.get(it[pos][2])
@@ -286,10 +293,10 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line))
 			Instruction.DICTIONARY:
 				var res: Dictionary
-				for i: int in range(0, it[pos][2], 2):
-					var key = stack.pop_back() # TODO
-					var val = stack.pop_back()
-					res[key if key is not Undefined else null] = val if val is not Undefined else null
+				for i: int in it[pos][2]:
+					var entry = stack.pop_back()
+					if entry is KeyValuePairProxy: res[entry.key if entry.key is not Undefined else null] = entry.value if entry.value is not Undefined else null
+					else: res[entry if entry is not Undefined else null] = null
 				stack.push_back(res)
 		
 		pos += 1
@@ -386,6 +393,91 @@ func _is_str_or_arr(v) -> bool:
 func _is_container(v) -> bool:
 	return v is Array or v is Dictionary
 
+### PROXIES
+
+class Proxy:
+	var _prefix: String
+	func _init(prefix := "_proxy_") -> void: _prefix = prefix
+
+class ArrayProxy extends Proxy:
+	var array: Array
+	# no filter, map, reduce
+	func _init(a: Array) -> void: super(); array = a
+	func _to_string() -> String: return str(array)
+	func _proxy_append(e) -> Array: array.append(e); return array
+	func _proxy_append_array(a: Array) -> Array: array.append_array(a); return array
+	func _proxy_assign(a: Array) -> Array: array.assign(a); return array
+	func _proxy_back(): return array[-1] if array else null
+	func _proxy_bsearh(val, before := true) -> int: return array.bsearch(val, before)
+	func _proxy_clear() -> Array: array.clear(); return array
+	func _proxy_count(val) -> int: return array.count(val)
+	func _proxy_duplicate(deep := false) -> Array: return array.duplicate(deep)
+	func _proxy_erase(val) -> Array: array.erase(val); return array
+	func _proxy_fill(val) -> Array: array.fill(val); return array
+	func _proxy_find(val, from := 0) -> int: return array.find(val, from)
+	func _proxy_front(): return array[0] if array else null
+	func _proxy_get(idx: int): return array[idx] if idx < array.size() and idx >= -array.size() else null
+	func _proxy_has(val) -> bool: return val in array
+	func _proxy_hash() -> int: return array.hash()
+	func _proxy_insert(idx: int, val) -> Array: array.insert(idx, val); return array # TODO error check?
+	func _proxy_is_empty() -> bool: return array.is_empty()
+	func _proxy_max(): return array.max()
+	func _proxy_min(): return array.min()
+	func _proxy_pick_random(): return array.pick_random()
+	func _proxy_pop_at(idx: int): return array.pop_at(idx) if idx < array.size() and idx >= -array.size() else null
+	func _proxy_pop_back(): return array.pop_back()
+	func _proxy_pop_front(): return array.pop_front()
+	func _proxy_push_back(val) -> Array: array.push_back(val); return array
+	func _proxy_push_front(val) -> Array: array.push_front(val); return array
+	func _proxy_remove_at(idx: int) -> Array:
+		if idx < array.size() and idx >= -array.size(): array.remove_at(idx);
+		return array
+	func _proxy_resize(sz: int) -> Array: array.resize(sz); return array
+	func _proxy_reverse() -> Array: array.reverse(); return array
+	func _proxy_rfind(val, from := 0) -> int: return array.rfind(val, from)
+	func _proxy_set(idx: int, val) -> Array:
+		if idx < array.size() and idx >= -array.size(): array[idx] = val
+		return array
+	func _proxy_shuffle() -> Array: array.shuffle(); return array
+	func _proxy_size() -> int: return array.size()
+	func _proxy_slice(begin: int, end := 0x7FFFFFFF, step := 1, deep := false) -> Array: return array.slice(begin, end, step, deep)
+	func _proxy_sort() -> Array: array.sort(); return array
+
+class DictionaryProxy extends Proxy:
+	var dict: Dictionary
+	func _init(d: Dictionary) -> void: super(); dict = d
+	func _to_string() -> String: return str(dict)
+	func _proxy_assign(d: Dictionary) -> Dictionary: dict.assign(d); return dict
+	func _proxy_clear() -> Dictionary: dict.clear(); return dict
+	func _proxy_duplicate(deep := false) -> Dictionary: return dict.duplicate(deep)
+	func _proxy_erase(key) -> Dictionary: dict.erase(key); return dict
+	func _proxy_find_key(val): return dict.find_key(val)
+	func _proxy_get(key, default = null): return dict.get(key, default)
+	func _proxy_get_or_add(key, default = null): return dict.get_or_add(key, default)
+	func _proxy_has(key) -> bool: return dict.has(key)
+	func _proxy_has_all(keys: Array) -> bool: return dict.has_all(keys)
+	func _proxy_hash() -> int: return dict.hash()
+	func _proxy_is_empty() -> bool: return dict.is_empty()
+	func _proxy_keys() -> Array: return dict.keys()
+	func _proxy_merge(d: Dictionary, overwrite := false) -> Dictionary: dict.merge(d, overwrite); return dict
+	func _proxy_merged(d: Dictionary, overwrite := false) -> Dictionary: return dict.merged(d, overwrite)
+	func _proxy_recursive_equal(d: Dictionary, recursion_count := 100) -> bool: return dict.recursive_equal(d, recursion_count)
+	func _proxy_set(entry) -> Dictionary:
+		if entry is KeyValuePairProxy: dict.set(entry.key, entry.value)
+		else: dict.set(entry, null)
+		return dict # changes argument and return value of set()
+	func _proxy_size() -> int: return dict.size()
+	func _proxy_sort() -> Dictionary: dict.sort(); return dict
+	func _proxy_values() -> Array: return dict.values()
+
+class KeyValuePairProxy extends Proxy:
+	var key
+	var value
+	func _init(k, v) -> void: super(); key = k; value = v
+	func _to_string() -> String: return str("(", key, ": ", value, ")")
+	func _proxy_key(): return key
+	func _proxy_value(): return value
+
 ### LEXER
 
 func _lex(code: String) -> Array[Array]:
@@ -429,77 +521,6 @@ class Scope:
 	var stops: Array[Array]
 	func _init(p: int) -> void: start_pos = p
 	func init_stops(p: int) -> void: for s: Array in stops: s.append(p) # jump targets of stops
-
-class Proxy:
-	var _prefix: String
-	func _init(prefix := "_proxy_") -> void:
-		_prefix = prefix
-
-class ArrayProxy extends Proxy:
-	var array: Array
-	# no filter, map, reduce
-	func _init(a: Array) -> void: super(); array = a
-	func _proxy_append(e) -> Array: array.append(e); return array
-	func _proxy_append_array(a: Array) -> Array: array.append_array(a); return array
-	func _proxy_assign(a: Array) -> Array: array.assign(a); return array
-	func _proxy_back(): return array[-1] if array else null
-	func _proxy_bsearh(val, before := true) -> int: return array.bsearch(val, before)
-	func _proxy_clear() -> Array: array.clear(); return array
-	func _proxy_count(val) -> int: return array.count(val)
-	func _proxy_duplicate(deep := false) -> Array: return array.duplicate(deep)
-	func _proxy_erase(val) -> Array: array.erase(val); return array
-	func _proxy_fill(val) -> Array: array.fill(val); return array
-	func _proxy_find(val, from := 0) -> int: return array.find(val, from)
-	func _proxy_front(): return array[0] if array else null
-	func _proxy_get(idx: int): return array[idx] if idx < array.size() and idx >= -array.size() else null
-	func _proxy_has(val) -> bool: return val in array
-	func _proxy_hash() -> int: return array.hash()
-	func _proxy_insert(idx: int, val) -> Array: array.insert(idx, val); return array # TODO error check?
-	func _proxy_is_empty() -> bool: return array.is_empty()
-	func _proxy_max(): return array.max()
-	func _proxy_min(): return array.min()
-	func _proxy_pick_random(): return array.pick_random()
-	func _proxy_pop_at(idx: int): return array.pop_at(idx) if idx < array.size() and idx >= -array.size() else null
-	func _proxy_pop_back(): return array.pop_back()
-	func _proxy_pop_front(): return array.pop_front()
-	func _proxy_push_back(val) -> Array: array.push_back(val); return array
-	func _proxy_push_front(val) -> Array: array.push_front(val); return array
-	func _proxy_remove_at(idx: int) -> Array:
-		if idx < array.size() and idx >= -array.size(): array.remove_at(idx);
-		return array
-	func _proxy_resize(sz: int) -> Array: array.resize(sz); return array
-	func _proxy_reverse() -> Array: array.reverse(); return array
-	func _proxy_rfind(val, from := 0) -> int: return array.rfind(val, from)
-	func _proxy_set(idx: int, val) -> Array:
-		if idx < array.size() and idx >= -array.size(): array[idx] = val
-		return array
-	func _proxy_shuffle() -> Array: array.shuffle(); return array
-	func _proxy_size() -> int: return array.size()
-	func _proxy_slice(begin: int, end := 0x7FFFFFFF, step := 1, deep := false) -> Array: return array.slice(begin, end, step, deep)
-	func _proxy_sort() -> Array: array.sort(); return array
-
-class DictionaryProxy extends Proxy:
-	var dict: Dictionary
-	func _init(d: Dictionary) -> void: super(); dict = d
-	func _proxy_assign(d: Dictionary) -> Dictionary: dict.assign(d); return dict
-	func _proxy_clear() -> Dictionary: dict.clear(); return dict
-	func _proxy_duplicate(deep := false) -> Dictionary: return dict.duplicate(deep)
-	func _proxy_erase(key) -> Dictionary: dict.erase(key); return dict
-	func _proxy_find_key(val): return dict.find_key(val)
-	func _proxy_get(key, default = null): return dict.get(key, default)
-	func _proxy_get_or_add(key, default = null): return dict.get_or_add(key, default)
-	func _proxy_has(key) -> bool: return dict.has(key)
-	func _proxy_has_all(keys: Array) -> bool: return dict.has_all(keys)
-	func _proxy_hash() -> int: return dict.hash()
-	func _proxy_is_empty() -> bool: return dict.is_empty()
-	func _proxy_keys() -> Array: return dict.keys()
-	func _proxy_merge(d: Dictionary, overwrite := false) -> Dictionary: dict.merge(d, overwrite); return dict
-	func _proxy_merged(d: Dictionary, overwrite := false) -> Dictionary: return dict.merged(d, overwrite)
-	func _proxy_recursive_equal(d: Dictionary, recursion_count := 100) -> bool: return dict.recursive_equal(d, recursion_count)
-	func _proxy_set(key, val) -> Dictionary: dict.set(key, val); return dict # change return value of set()
-	func _proxy_size() -> int: return dict.size()
-	func _proxy_sort() -> Dictionary: dict.sort(); return dict
-	func _proxy_values() -> Array: return dict.values()
 
 class Expr:
 	var _line: int
@@ -561,6 +582,15 @@ class Expr:
 			right.compile(gompl, it, scope_stack)
 			if left is Expr.Identifier: it.append([ _line, Instruction.ASSIGN, left.name ])
 			elif left is Expr.ArrayAccess: left.compile(gompl, it, scope_stack); it.append([ _line, Instruction.ASSIGN_ARR ])
+	class Pair extends Expr:
+		var left: Expr
+		var right: Expr
+		func _init(ln: int, l: Expr, r: Expr) -> void: super(ln); left = l; right = r
+		func _to_string() -> String: return str("Pair(", left, ", ", right, ")")
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
+			left.compile(gompl, it, scope_stack)
+			right.compile(gompl, it, scope_stack)
+			it.append([ _line, Instruction.PAIR ])
 	class Literal extends Expr:
 		var lit
 		func _init(ln: int, l) -> void: super(ln); lit = l
@@ -743,7 +773,7 @@ class Parser:
 		return assignment()
 	
 	func assignment() -> Expr:
-		var expr := op_and()
+		var expr := pair()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ASSIGNMENT:
 			if expr is not Expr.Identifier and expr is not Expr.ArrayAccess:
 				_set_err("Assignment missing left side identifier"); return null
@@ -755,6 +785,16 @@ class Parser:
 			var right := expression()
 			if not right: _set_err("Assignment missing right side expression"); return null
 			expr = Expr.Assignment.new(ln, expr, operator, right)
+		return expr
+	
+	func pair() -> Expr:
+		var expr := op_and()
+		if pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_PAIR:
+			var ln: int = tokens[pos][2]
+			pos += 1
+			var right := expression()
+			if not right: _set_err("Pair missing right side expression"); return null
+			expr = Expr.Pair.new(ln, expr, right)
 		return expr
 	
 	func op_and() -> Expr:

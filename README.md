@@ -71,14 +71,14 @@ Gompl functions do not allow any parameters, and they return the result of the l
 
 Arrays are always untyped and initialised like this: `a = array(1, 2, 3)`, array access uses square brackets: `foo = a[0]`, `a[1] = "bar"`. Most methods of Godot's arrays are supported, apart from those using Callables, e.g. filter(), and all *_custom() methods. The methods are called via `a.method(<parameters>)`, and most of them return the array again. This way you can use currying, e.g. `a = array(4, 3, 2).append(1).sort()` (`a` will be `[ 1, 2, 3, 4 ]`).
 
-Dictionaries are also supported: `d = dictionary("a", 1, "b", 2, "c", 3)`. *Initialisation will probably be changed to using colon for key value pairs.* The same rules as to arrays apply, and no method regarding types are supported. `set(key, value)` returns the dictionary itself instead of true/false like in Godot. In order to iterate over a dictionary, use `keys()` or `values()`:
+Dictionaries are also supported: `d = dictionary("a": 1, "b": 2, "c": 3)`. The same rules as to arrays apply, and no method regarding types are supported. `set(entry)` returns the dictionary itself instead of true/false like in Godot; `entry` can be a key-value pair (`"foo": 5`), or anything else, which then creates an entry with undefined value. This also works during `dictionary()` initialisation. In order to iterate over a dictionary, use `keys()` (or `values()`):
 
 ```Lua
-d = dictionary("name", "Klapauzius", "age", 10000, "weight", 123.4)
-d_keys = d.keys() // keys() creates an array filled with the dictionary's keys
+d = dictionary("name": "Klapauzius", "age": 10000, "weight": 123.4)
+d_keys = d.keys() // -- keys() creates an array filled with the dictionary's keys
 i = 0 while i < d.size() do
 	value = d[d_keys[i]]
-	print("Key: " + d_keys[i] + " Value: " + value)
+	print("Key: " + d_keys[i] + " ... Value: " + value)
 	i = i + 1
 end
 ```

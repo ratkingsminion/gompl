@@ -172,13 +172,13 @@ func _ready() -> void:
 	
 	# test dictionary
 	res = g.eval('
-		d = dictionary("c", 3, "b", 2, "a", 1).sort()
-		d["d"] = 4
+		d = dictionary("c": 3, "b": 2, "a": 1).set("d": 4).sort()
+		d["e"] = 5
 		print(d)
-		d.get_or_add("e", 5)
+		d.get_or_add("f", 6)
 	')
 	print("RESULT 12 (dictionary): ", res, "\n")
-	assert((res is int or res is float) and res == 5, "Result 12 wrong")
+	assert((res is int or res is float) and res == 6, "Result 12 wrong")
 	
 	# done, results in Output
 	print("done.")
