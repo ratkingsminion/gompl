@@ -37,15 +37,18 @@ const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
 const _TOKEN_PAIR: Array[String] = [ ":" ]
 const _TOKEN_ACCESS: Array[String] = [ "." ]
+const _TOKEN_ITERATE: Array[String] = [ "from" ]
 const _TOKEN_BINARY_OPERATOR: Array[String] = [ "+", "-", "*", "/", "%" ]
 const _TOKEN_BINARY_OPERATOR_ALLOWING_UNDEFINED: Array[String] = [ "+", "%" ]
 const _TOKEN_FLOW_CONTROL: Array[String] = [ "stop", "skip", "interrupt" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "do", "end", "stop", "skip", "interrupt", "with", "function", "array", "dictionary" ]
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "from",
+	"do", "end", "stop", "skip", "interrupt", "with", "function", "array", "dictionary" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
 
-enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_IDX, PAIR, LITERAL, POP,
-	IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, DICTIONARY, ACCESS_IDX }
+enum Instruction { UNDEFINED, BINARY_LOGIC, BINARY_LOGIC_END, BINARY, UNARY, ASSIGN, ASSIGN_IDX, PAIR, LITERAL,
+	POP, IDENTIFIER, CHECK, JUMP, INTERRUPT, CALL_METHOD, CALL_INTERNAL, RETURN, CALL_EXTERNAL, ARRAY, DICTIONARY,
+	ACCESS_IDX, ITERATE }
 
 var debug_printing := false
 var err: String
@@ -164,8 +167,8 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				var r = stack.pop_back()
 				stack.push_back(r and r is not Undefined)
 			Instruction.BINARY:
-				var l = stack.pop_back()
 				var r = stack.pop_back()
+				var l = stack.pop_back()
 				if it[pos][2] == "==":
 					if _is_string(l) and _is_string(r): stack.push_back(l == r)
 					elif _is_number(l) and _is_number(r): stack.push_back(l == r)
@@ -177,37 +180,45 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					elif l is Undefined and r is Undefined: stack.push_back(false)
 					else: stack.push_back(typeof(l) != typeof(r) or l != r)
 				elif (l is Undefined or r is Undefined) and it[pos][2] not in _TOKEN_BINARY_OPERATOR_ALLOWING_UNDEFINED:
-					_set_err_runtime(it[pos], "Can't use undefined variable in binary op '" + it[pos][2] + "'")
+					_set_err_runtime(stack, it[pos], str("Can't use undefined variable in binary op '", it[pos][2], "'"))
 					stack.push_back(Undefined.new(line))
 				elif it[pos][2] in _TOKEN_BINARY_OPERATOR:
 					match it[pos][2]:
 						"+":
 							if _is_string(l) or _is_string(r): stack.push_back(str(l, r))
 							elif l is Undefined or r is Undefined: stack.push_back(Undefined.new(line))
+							elif not _is_number(l) or not _is_number(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '-'")
 							else: stack.push_back(l + r)
 						"-":
 							if _is_string(l): stack.push_back(l.replace(str(r), ""))
-							elif _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '-'"); stack.push_back(Undefined.new(line))
+							elif _is_string(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '-'")
 							elif l is Undefined or r is Undefined: stack.push_back(Undefined.new(line))
+							elif not _is_number(l) or not _is_number(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '-'")
 							else: stack.push_back(l - r)
 						"*":
 							if _is_string(l) and _is_number(r): stack.push_back(l.repeat(r))
 							elif _is_number(l) and _is_string(r): stack.push_back(r.repeat(l))
-							elif _is_string(l) and _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '*'"); stack.push_back(Undefined.new(line))
+							elif _is_string(l) and _is_string(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '*'")
+							elif not _is_number(l) or not _is_number(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '-'")
 							else: stack.push_back(l * r)
 						"/":
-							if _is_string(l) or _is_string(r): _set_err_runtime(it[pos], "Incompatible types in binary op '/'"); stack.push_back(Undefined.new(line))
+							if _is_string(l) or _is_string(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '/'")
 							elif l is Undefined or r is Undefined: stack.push_back(Undefined.new(line))
-							elif _is_number(r) and r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Undefined.new(line))
+							elif not _is_number(l) or not _is_number(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '-'")
+							elif r == 0: _set_err_runtime(stack, it[pos], "Division by zero")
 							else: stack.push_back(l / r)
 						"%":
-							if _is_string(r) and not _is_string(l): _set_err_runtime(it[pos], "Incompatible types in binary op '%'"); stack.push_back(Undefined.new(line))
+							if _is_string(r) and not _is_string(l): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '%'")
 							elif l is Undefined or r is Undefined: stack.push_back(Undefined.new(line))
-							elif _is_number(r) and r == 0: _set_err_runtime(it[pos], "Division by zero"); stack.push_back(Undefined.new(line))
+							elif not _is_number(l) or not _is_number(r): _set_err_runtime(stack, it[pos], "Incompatible types in binary op '-'")
+							elif r == 0: _set_err_runtime(stack, it[pos], "Division by zero")
 							else: stack.push_back(l % r)
 				else:
 					if _is_string(l) != _is_string(r):
-						_set_err_runtime(it[pos], "Incompatible types for binary op '" + it[pos][2] + "'"); stack.push_back(Undefined.new(line))
+						_set_err_runtime(stack, it[pos], str("Incompatible types for binary op '", it[pos][2], "'"))
+						
+						
+						
 					else:
 						match it[pos][2]:
 							"<": stack.push_back(l < r)
@@ -221,22 +232,26 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 						stack.push_back(r is Undefined or not r)
 					"-":
 						if r is Undefined: stack.push_back(Undefined.new(line))
-						elif not _is_number(r): _set_err_runtime(it[pos], "Incompatible type for unary op '-'"); stack.push_back(Undefined.new(line))
+						elif not _is_number(r): _set_err_runtime(stack, it[pos], "Incompatible type for unary op '-'")
 						else: stack.push_back(-r)
 			Instruction.ASSIGN:
-				var res = stack.pop_back()
-				if res == null or res is Undefined:
-					env.erase(it[pos][2])
+				if env.get(it[pos][2], 0) is Iterator:
+					_set_err_runtime(stack, it[pos], "Can't assign value to iterator")
 					stack.push_back(Undefined.new(line))
 				else:
-					env[it[pos][2]] = res
-					stack.push_back(res)
+					var res = stack.pop_back()
+					if res == null or res is Undefined:
+						env.erase(it[pos][2])
+						stack.push_back(Undefined.new(line))
+					else:
+						env[it[pos][2]] = res
+						stack.push_back(res)
 			Instruction.ASSIGN_IDX:
 				var obj = stack.pop_back()
 				var idx = stack.pop_back()
 				var res = stack.back()
 				if res is Undefined: res = null
-				if obj is Array and (idx >= obj.size() or idx < -obj.size()): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
+				if obj is Array and (idx >= obj.size() or idx < -obj.size()): _set_err_runtime(stack, it[pos], "Array access out of bounds")
 				else: obj[idx] = res
 			Instruction.PAIR:
 				var value = stack.pop_back()
@@ -247,7 +262,9 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			Instruction.POP:
 				stack.pop_back()
 			Instruction.IDENTIFIER:
-				stack.push_back(env.get(it[pos][2], Undefined.new(line)))
+				var res = env.get(it[pos][2], Undefined.new(line))
+				if res is Iterator: stack.push_back(res.get_cur_value())
+				else: stack.push_back(res)
 			Instruction.CHECK: # conditional jump
 				if stack:
 					var r = stack.pop_back()
@@ -269,7 +286,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					TYPE_OBJECT:
 						if obj is Proxy: _excall(stack, line, it[pos], obj)
 						#else: _excall(stack, line, it[pos], obj) # unsafe!
-					_: _set_err_runtime(it[pos], str("Invalid target object for method '", f, "'")); stack.push_back(Undefined.new(line)) 
+					_: _set_err_runtime(stack, it[pos], str("Invalid target object for method '", f, "'"))
 			Instruction.CALL_INTERNAL:
 				var rf: Expr.Function = _registered_in_funcs.get(it[pos][2])
 				returns.push_back(pos)
@@ -295,15 +312,26 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			Instruction.ACCESS_IDX:
 				var idx = stack.pop_back()
 				var obj = stack.pop_back()
-				if _is_container(obj) or _is_string(obj):
-					if _is_str_or_arr(obj) and not _is_number(idx): _set_err_runtime(it[pos], str("Array access must be a number")); stack.push_back(Undefined.new(line)) 
-					elif _is_str_or_arr(obj) and (idx >= len(obj) or idx < -len(obj)): _set_err_runtime(it[pos], str("Array access out of bounds")); stack.push_back(Undefined.new(line)) 
-					elif not it[pos][2] and obj is Dictionary and idx not in obj: _set_err_runtime(it[pos], str("Dictionary access needs existing key")); stack.push_back(Undefined.new(line)) 
+				if _is_iterable(obj):
+					if _is_str_or_arr(obj) and not _is_number(idx): _set_err_runtime(stack, it[pos], "Index access must be a number")
+					elif _is_str_or_arr(obj) and (idx >= len(obj) or idx < -len(obj)): _set_err_runtime(stack, it[pos], "Index access out of bounds")
+					elif not it[pos][2] and obj is Dictionary and idx not in obj: _set_err_runtime(stack, it[pos], "Dictionary index access needs existing key")
 					elif it[pos][2] and _is_container(obj): stack.push_back(idx); stack.push_back(obj) # is left side
-					elif it[pos][2]: _set_err_runtime(it[pos], str("Can't use String array access on left side")); stack.push_back(Undefined.new(line)) 
+					elif it[pos][2]: _set_err_runtime(stack, it[pos], "Can't use String index access on left side")
 					else: stack.push_back(obj[idx])
-				else: _set_err_runtime(it[pos], str("Invalid array access")); stack.push_back(Undefined.new(line))
-		
+				else: _set_err_runtime(stack, it[pos], "Invalid index access")
+			Instruction.ITERATE:
+				var obj = stack.pop_back()
+				if not _is_iterable(obj):
+					_set_err_runtime(stack, it[pos], "Iteration possible only over arrays, dictionaries or strings")
+				else:
+					var iter = env.get(it[pos][2], 0)
+					if iter is not Iterator or typeof(iter.container) != typeof(obj) or iter.container != obj:
+						iter = Iterator.new(obj)
+						env.set(it[pos][2], iter)
+					var res: bool = iter.iterate()
+					if not res: env.set(it[pos][2], Undefined.new(line))
+					stack.push_back(res)
 		pos += 1
 		step += 1
 		if max_steps > 0 and step >= max_steps:
@@ -313,7 +341,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 	state[&"returns"] = returns
 	state[&"pos"] = pos
 	state[&"env"] = env
-	state[&"steps"] = step
+	state[&"step"] = step
 	
 	if err: printerr(err); return null
 	
@@ -331,18 +359,15 @@ func _excall(stack: Array, line: int, it_at_pos: Array, t, rf = null):
 	var mn: String = it_at_pos[2]
 	if t is Proxy: mn = str(t._prefix, mn) # proxy call for safe object access
 	if not rf and not (t and t.has_method(mn)): # check existence of method again - TODO always?
-		_set_err_runtime(it_at_pos, str("Method '", it_at_pos[2], "' not found"))
-		stack.push_back(Undefined.new(line))
+		_set_err_runtime(stack, it_at_pos, str("Method '", it_at_pos[2], "' not found"))
 		return null
 	var args = []
 	var mlm = null if rf else t.get_method_list().filter(func(m: Dictionary) -> bool: return m.name == mn)[0]
 	if not rf: # check argument count again - TODO always?
 		if it_at_pos[3] > mlm.args.size():
-			_set_err_runtime(it_at_pos, str("Too many parameters for method '", mn, "'"))
-			stack.push_back(Undefined.new(line))
+			_set_err_runtime(stack, it_at_pos, str("Too many parameters for method '", mn, "'"))
 		elif it_at_pos[3] < mlm.args.size() - mlm.default_args.size():
-			_set_err_runtime(it_at_pos, str("Too few parameters for method '", mn, "'"))
-			stack.push_back(Undefined.new(line))
+			_set_err_runtime(stack, it_at_pos, str("Too few parameters for method '", mn, "'"))
 	if not err:
 		for i: int in it_at_pos[3]:
 			var arg = stack.pop_back()
@@ -356,8 +381,7 @@ func _excall(stack: Array, line: int, it_at_pos: Array, t, rf = null):
 					T_ARRAY: if a is not Array: incomp = true
 					T_DICTIONARY: if a is not Dictionary: incomp = true
 				if incomp:
-					_set_err_runtime(it_at_pos, str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
-					stack.push_back(Undefined.new(line))
+					_set_err_runtime(stack, it_at_pos, str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", rf[1][i], "'"))
 					break
 			else:
 				match mlm.args[i].type:
@@ -366,8 +390,7 @@ func _excall(stack: Array, line: int, it_at_pos: Array, t, rf = null):
 					TYPE_ARRAY: if a is not Array: incomp = true
 					_: if typeof(a) != mlm.args[i].type and mlm.args[i].type != TYPE_NIL: incomp = true
 				if incomp:
-					_set_err_runtime(it_at_pos, str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", type_string(mlm.args[i].type), "'"))
-					stack.push_back(Undefined.new(line))
+					_set_err_runtime(stack, it_at_pos, str("Incompatible type '", type_string(typeof(a)).to_lower(), "' for parameter ", i + 1, ", wants '", type_string(mlm.args[i].type), "'"))
 					break
 			args.append(a)
 		if not err:
@@ -382,15 +405,19 @@ func _set_err(e, overwrite := false) -> void:
 	if err and not overwrite: return
 	err = str(e)
 	
-func _set_err_runtime(instruction: Array, e: String) -> void:
+func _set_err_runtime(stack: Array, instruction: Array, e: String) -> void:
 	var error := str("[Runtime] [Line ", instruction[0], "] ", e)
 	_set_err(error, false)
+	stack.push_back(Undefined.new(instruction[0]))
 
 func _is_string(v) -> bool:
 	return v is String or v is StringName
 
 func _is_number(v) -> bool:
 	return v is int or v is float
+
+func _is_iterable(v) -> bool:
+	return v is Array or v is Dictionary or v is String or v is StringName
 
 func _is_str_or_arr(v) -> bool:
 	return v is Array or v is String or v is StringName
@@ -483,6 +510,19 @@ class KeyValuePairProxy extends Proxy:
 	func _proxy_key(): return key
 	func _proxy_value(): return value
 
+class Iterator:
+	var container
+	var container_to_iterate
+	var cur_idx := -1
+	func _init(c) -> void: container = c; container_to_iterate = c.keys() if c is Dictionary else c
+	func _to_string() -> String: return str(get_cur_value())
+	func iterate() -> bool:
+		cur_idx += 1
+		return cur_idx < len(container_to_iterate)
+	func get_cur_value():
+		if not container_to_iterate or cur_idx < 0 or cur_idx >= len(container_to_iterate): return null
+		return container_to_iterate[cur_idx]
+
 ### LEXER
 
 func _lex(code: String) -> Array[Array]:
@@ -557,8 +597,8 @@ class Expr:
 				it.append([ _line, Instruction.BINARY_LOGIC_END ])
 				d.append(it.size())
 			else:
-				right.compile(gompl, it, scope_stack)
 				left.compile(gompl, it, scope_stack)
+				right.compile(gompl, it, scope_stack)
 				it.append([ _line, Instruction.BINARY, op ])
 	class Unary extends Expr:
 		var op: String
@@ -574,9 +614,17 @@ class Expr:
 		func _init(ln: int, l: Expr, r: Expr) -> void: super(ln); left = l; right = r
 		func _to_string() -> String: return str("Accessor(", left, ", ", right, ")")
 		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
-			if left == null: _set_err(gompl, str("Accessor missing left operand")); return
-			if right == null: _set_err(gompl, str("Accessor missing right operand")); return
+			if left == null: _set_err(gompl, "Accessor missing left operand"); return
+			if right == null: _set_err(gompl, "Accessor missing right operand"); return
 			right.compile(gompl, it, scope_stack, left)
+	class Iterate extends Expr:
+		var ident: Identifier
+		var expr: Expr
+		func _init(ln: int, i: Identifier, e: Expr) -> void: super(ln); ident = i; expr = e
+		func _to_string() -> String: return str("Iterate(", ident, ", ", expr, ")")
+		func compile(gompl: Gompl, it: Array[Array], scope_stack: Array[Scope], _parent: Expr = null) -> void:
+			expr.compile(gompl, it, scope_stack)
+			it.append([ _line, Instruction.ITERATE, ident.name ])
 	class Assignment extends Expr:
 		var left: Expr
 		var op: String
@@ -876,7 +924,18 @@ class Parser:
 			var right := unary()
 			if not right: _set_err("Unary op '" + operator + "' has wrong right side"); return null
 			return Expr.Unary.new(ln, operator, right)
-		return accessor()
+		return iterate()
+	
+	func iterate() -> Expr:
+		var expr := accessor()
+		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ITERATE:
+			if expr is not Expr.Identifier: _set_err("Iterate 'from' expects identifier on left side"); return null
+			var ln: int = tokens[pos][2]
+			pos += 1
+			var right := expression()
+			if not right: _set_err("Iterate 'from' expects expression on right side"); return null
+			return Expr.Iterate.new(ln, expr, right)
+		return expr
 	
 	func accessor() -> Expr:
 		var expr := index_access()

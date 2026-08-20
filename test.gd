@@ -122,7 +122,7 @@ func _ready() -> void:
 					interrupt with x // premature script exit
 				end
 			end', null, state, max_steps)
-		print("value of X on frame ", i, ": ", state.env["x"], " after ", state["steps"], " steps")
+		print("value of X on frame ", i, ": ", state.env["x"], " after ", state["step"], " steps")
 		await get_tree().process_frame
 	print("RESULT 8 (endless loop and interrupt): ", res, "\n")
 	assert((res is int or res is float) and res == 104, "Result 8 wrong")
@@ -178,6 +178,24 @@ func _ready() -> void:
 	')
 	print("RESULT 12 (dictionary): ", res, "\n")
 	assert((res is int or res is float) and res == 6, "Result 12 wrong")
+	
+	# test iterating
+	res = g.eval('
+		while value from array(5, 6, 7, 8, 9) do
+			print(value + " + 1 = " + (value + 1))
+			if value == 7 then stop end
+		end
+		
+		// from works outside of while loops too
+		print((s from "STR") + " -> " + s)
+		print((s from "STR") + " -> " + s)
+		print((s from "STR") + " -> " + s)
+		print((s from "STR") + " -> " + s)
+		
+		value
+	')
+	print("RESULT 13 (iterating): ", res, "\n")
+	assert((res is int or res is float) and res == 7, "Result 13 wrong")
 	
 	# done, results in Output
 	print("done.")

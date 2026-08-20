@@ -8,18 +8,18 @@ A simple scripting language written in GDScript with focus on safe usage (no God
 
 ```GDScript
 func some_method(p):
-  print(p)
+	print(p)
 
 func _ready() -> void:
-  var gompl := Gompl.new(self)
-  var res = gompl.eval('
-	// Gompl code begins here!
-	x = 0 // variables should be initialised, otherwise they are "undefined"
-	while x < 10 do
-	  some_method(x)
-	  x = x + 1
-	end')
-  print(res)
+	var gompl := Gompl.new(self)
+	var res = gompl.eval('
+	  // Gompl code begins here!
+	  x = 0 // variables should be initialised, otherwise they are "undefined"
+	  while x < 10 do
+	    some_method(x)
+	   x = x + 1
+	  end')
+	print(res)
 ```
 
 `eval()` returns the value of the last evaluated expression, so in the example this would be the expression `x = x + 1` and the printed result will be 10.
@@ -50,6 +50,7 @@ func _ready() -> void:
 * function
 * array
 * dictionary
+* from
 
 ## Notes
 
@@ -71,15 +72,16 @@ Gompl functions do not allow any parameters, and they return the result of the l
 
 Arrays are always untyped and initialised like this: `a = array(1, 2, 3)`, array access uses square brackets: `foo = a[0]`, `a[1] = "bar"`. Most methods of Godot's arrays are supported, apart from those using Callables, e.g. filter(), and all *_custom() methods. The methods are called via `a.method(<parameters>)`, and most of them return the array again. This way you can use currying, e.g. `a = array(4, 3, 2).append(1).sort()` (`a` will be `[ 1, 2, 3, 4 ]`).
 
-Dictionaries are also supported: `d = dictionary("a": 1, "b": 2, "c": 3)`. The same rules as to arrays apply, and no method regarding types are supported. `set(entry)` returns the dictionary itself instead of true/false like in Godot; `entry` can be a key-value pair (`"foo": 5`), or anything else, which then creates the key with undefined value. This also works during `dictionary()` initialisation. In order to iterate over a dictionary, use `keys()` (or `values()`):
+Dictionaries are also supported: `d = dictionary("a": 1, "b": 2, "c": 3)`. The same rules as to arrays apply, and no method regarding types are supported. `set(entry)` returns the dictionary itself instead of true/false like in Godot; `entry` can be a key-value pair (`"foo": 5`), or anything else, which then creates the key with undefined value. This also works during `dictionary()` initialisation.
+
+In order to iterate over an array or a dictionary you can use `from`:
 
 ```Lua
 d = dictionary("name": "Klapauzius", "age": 10000, "weight": 123.4)
-d_keys = d.keys() // -- keys() creates an array filled with the dictionary's keys
-i = 0 while i < d.size() do
-	value = d[d_keys[i]]
-	print("Key: " + d_keys[i] + " ... Value: " + value)
-	i = i + 1
+while key from d do
+	print("Key: " + key + " ... Value: " + d[key])
+	// not allowed: key = <value>
+	// not recommended: d.erase(key)
 end
 ```
 
