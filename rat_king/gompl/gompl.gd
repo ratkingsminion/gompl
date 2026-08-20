@@ -51,6 +51,8 @@ var debug_printing := false
 var err: String
 var target: Object
 
+var cur_state: Dictionary
+
 const T_ANY = &"any"
 const T_NUMBER = &"number"
 const T_STRING = &"string"
@@ -96,7 +98,7 @@ func tokenize_code(code: String) -> Array[Array]:
 	err = ""
 	var tokens := _lex(code)
 	if err: printerr(err); return []
-	if debug_printing and tokens: print("TOKENS: ", tokens)
+	if debug_printing and tokens: print("TOKENS (", tokens.size(), "): ", tokens)
 	return tokens
 
 ## Step 2 - returns the AST (abstract syntax tree) of the tokens
@@ -123,25 +125,29 @@ func compile(ast: Expr) -> Array[Array]:
 		for f: Expr.Function in _registered_in_funcs.values(): f.compile_deferred(self, it)
 	scope.init_stops(it.size())
 	if err: printerr(err); return []
-	if debug_printing and it: print("INSTRUCTIONS: ", it.map(func(a: Array) -> Array: var b: Array = a.duplicate(); b[1] = Instruction.keys()[b[1]]; return b))
+	if debug_printing and it: print("INSTRUCTIONS (", it.size(), "): ", it.map(func(a: Array) -> Array: var b: Array = a.duplicate(); b[1] = Instruction.keys()[b[1]]; return b))
 	return it
 
 ## Step 4 - iterate over the array of instructions, using it as a lower level language
 ## env is a Dictionary that contains all the variables assigned in the code
-## If you don't provide env, a temporary one will be created
+## If you don't provide env, the one from state will be used (if it exists), or a temporary one will be created 
 ## If you provide a state Dictionary, it can be re-used to continue the execution after it was interrupted
+## (but you can also use the cur_state member for that)
 func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant:
 	err = ""
 	if env == null: env = {} if state is not Dictionary else state.get(&"env", {})
 	elif env is not Dictionary: _set_err("Environment must be a Dictionary"); env = {}
 	
+	if state is not Dictionary: state = {}
+	cur_state = state
+	
 	var step: int = 0
-	var stack: Array = [] if state is not Dictionary else state.get(&"stack", [])
-	var returns: Array = [] if state is not Dictionary else state.get(&"returns", [])
-	var pos: int = 0 if state is not Dictionary else state.get(&"pos", 0)
+	var stack: Array = state.get(&"stack", [])
+	var returns: Array = state.get(&"returns", [])
+	var pos: int = state.get(&"pos", 0)
 	
 	while not err and pos < it.size():
-		if state is Dictionary and &"interrupted" in state:
+		if &"interrupted" in state:
 			break
 		var line: int = it[pos][0]
 		#print("run ", pos, ") ", it[pos], " - stack:", stack, " env:", env)
@@ -253,8 +259,7 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 				pos = it[pos][2] - 1
 			Instruction.INTERRUPT:
 				var res = stack.pop_back() if it[pos][2] else null
-				if state is Dictionary: state[&"interrupted"] = res
-				else: state = { &"interrupted": res }
+				state[&"interrupted"] = res
 			Instruction.CALL_METHOD:
 				var obj = stack.pop_back() # get the object to access with a method
 				var f: String = it[pos][2]
@@ -302,17 +307,17 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 		pos += 1
 		step += 1
 		if max_steps > 0 and step >= max_steps:
-			if state is Dictionary: state[&"interrupted"] = null
-			else: state = { &"interrupted": null }
+			state[&"interrupted"] = null
+	
+	state[&"stack"] = stack
+	state[&"returns"] = returns
+	state[&"pos"] = pos
+	state[&"env"] = env
+	state[&"steps"] = step
 	
 	if err: printerr(err); return null
 	
-	if state is Dictionary and &"interrupted" in state:
-		state[&"stack"] = stack
-		state[&"returns"] = returns
-		state[&"pos"] = pos
-		state[&"env"] = env
-		state[&"steps"] = step
+	if &"interrupted" in state:
 		var res = state[&"interrupted"]
 		state.erase(&"interrupted")
 		return res

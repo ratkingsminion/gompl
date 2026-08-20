@@ -46,18 +46,18 @@ func _ready() -> void:
 	assert((res is int or res is float) and res == 120, "Result 2 wrong")
 	
 	# test custom env Dictionary, and some assignments
-	var env = {}
+	var env := { "test": "str" }
 	res = g.eval('
-		test = "str"
-		t = if test != "str" then 100 else 50 end // if-then-else and while-do can be used as expressions
+		// test is defined already through the env Dictionary
+		t = if test != "str" then 100 else 50 end // if-then-elif-then-else and while-do can be used as expressions
 		r = s = -5 // assignments are expressions too
 		w = false
-		r = undefined // r will be removed from env
+		r = undefined // r will be removed from env!
 		t - 50 == 0
 	', env)
 	print("RESULT 3 (custom env): ", res) # true
 	print("-> WITH ENVIRONMENT: ", env, "\n")
-	assert((res is bool) and res == true, "Result 3 wrong")
+	assert((res is bool) and res == true and "r" not in env, "Result 3 wrong")
 	
 	# test undefined (similar to null in GDScript)
 	res = g.eval('
@@ -110,11 +110,10 @@ func _ready() -> void:
 	assert((res is int or res is float) and res == 13, "Result 7 wrong")
 	
 	# test endless loop and max steps of code execution
-	var max_steps := 200
-	var state = {}
+	var max_steps := 185
+	var state := {} # could also use g.cur_state for this
 	for i in 10:
-		# this compiles the code again on every step, which is wasteful
-		# better use g.run() instead
+		# this compiles the code again on every step, which is wasteful - better use g.run() instead
 		res = g.eval('
 			x = 0
 			while true do
@@ -123,7 +122,7 @@ func _ready() -> void:
 					interrupt with x // premature script exit
 				end
 			end', null, state, max_steps)
-		print("value of X on frame ", i, ": ", state["env"]["x"], " after ", state["steps"], " steps")
+		print("value of X on frame ", i, ": ", state.env["x"], " after ", state["steps"], " steps")
 		await get_tree().process_frame
 	print("RESULT 8 (endless loop and interrupt): ", res, "\n")
 	assert((res is int or res is float) and res == 104, "Result 8 wrong")
