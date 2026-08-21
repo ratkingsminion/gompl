@@ -5,9 +5,12 @@ extends Sprite2D
 @export var code_compile: Button
 @export var code_error: Label
 @export var maxsteps_edit: TextEdit
+@export var looping_toggle: CheckButton
 
 var state := {}
 var maxsteps := 2000
+var is_looping := true
+var executing := true
 
 @onready var orig_transform := self.transform
 @onready var gompl := Gompl.new(self)
@@ -24,16 +27,19 @@ func _ready() -> void:
 	code_compile.button_down.connect(on_code_compile)
 	maxsteps_edit.text_changed.connect(on_maxsteps_edit)
 	maxsteps_edit.text = str(maxsteps)
+	looping_toggle.toggled.connect(on_looping_toggled)
 	on_code_compile()
 
 func _process(_delta: float) -> void:
-	
-	code_error.text = ""
-	if not gompl.err:
-		# the code is compiled every frame, this is wasteful, but okay for this small example
-		gompl.eval(code, null, state, maxsteps)
-		if gompl.err: code_error.text = gompl.err
-		#gompl.debug_printing = false
+	if executing:
+		code_error.text = ""
+		if not gompl.err:
+			# the code is compiled every frame, this is wasteful, but okay for this small example
+			gompl.eval(code, null, state, maxsteps)
+			if gompl.err: code_error.text = gompl.err
+			#gompl.debug_printing = false
+	if not is_looping:
+		executing = false
 
 ###
 
@@ -44,7 +50,12 @@ func on_code_compile() -> void:
 	code = code_editor.text
 	gompl.err = ""
 	transform = orig_transform
+	executing = true
 
 func on_maxsteps_edit() -> void:
 	maxsteps = clampi(int(maxsteps_edit.text), 1, 5000)
 	maxsteps_edit.text = str(maxsteps)
+
+func on_looping_toggled(toggled_on: bool) -> void:
+	is_looping = toggled_on
+	if toggled_on: executing = true

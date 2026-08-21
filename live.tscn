@@ -5,7 +5,7 @@
 
 [node name="Live" type="Node2D" unique_id=54324533]
 
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=251321862 node_paths=PackedStringArray("code_editor", "code_compile", "code_error", "maxsteps_edit")]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=251321862 node_paths=PackedStringArray("code_editor", "code_compile", "code_error", "maxsteps_edit", "looping_toggle")]
 position = Vector2(600, 320)
 texture = ExtResource("1_yhsjk")
 script = ExtResource("2_o8brj")
@@ -13,25 +13,34 @@ code_editor = NodePath("../Code TextEdit")
 code_compile = NodePath("../Compile Button")
 code_error = NodePath("../Error Label")
 maxsteps_edit = NodePath("../MaxSteps TextEdit")
+looping_toggle = NodePath("../Looping Toggle")
+
+[node name="Looping Toggle" type="CheckButton" parent="." unique_id=787084891]
+offset_left = 12.0
+offset_top = 9.0
+offset_right = 352.0
+offset_bottom = 44.0
+button_pressed = true
+text = "Looping"
 
 [node name="Code TextEdit" type="TextEdit" parent="." unique_id=1800817836]
 offset_left = 12.0
-offset_top = 9.0
+offset_top = 44.0
 offset_right = 357.0
-offset_bottom = 310.0
+offset_bottom = 345.0
 
 [node name="Compile Button" type="Button" parent="." unique_id=870689426]
 offset_left = 12.0
-offset_top = 315.0
+offset_top = 350.0
 offset_right = 352.0
-offset_bottom = 350.0
+offset_bottom = 385.0
 text = "Compile"
 
 [node name="Error Label" type="Label" parent="." unique_id=1500920680]
 offset_left = 15.0
-offset_top = 357.0
+offset_top = 392.0
 offset_right = 356.0
-offset_bottom = 424.0
+offset_bottom = 459.0
 
 [node name="MaxSteps TextEdit" type="TextEdit" parent="." unique_id=1690844731]
 anchors_preset = 1
