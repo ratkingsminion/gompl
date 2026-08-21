@@ -312,25 +312,31 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 			Instruction.ACCESS_IDX:
 				var idx = stack.pop_back()
 				var obj = stack.pop_back()
-				if _is_iterable(obj):
-					if _is_str_or_arr(obj) and not _is_number(idx): _set_err_runtime(stack, it[pos], "Index access must be a number")
-					elif _is_str_or_arr(obj) and (idx >= len(obj) or idx < -len(obj)): _set_err_runtime(stack, it[pos], "Index access out of bounds")
+				var is_str_or_arr := _is_str_or_arr(obj)
+				var is_container := _is_container(obj)
+				if is_str_or_arr or is_container:
+					if is_str_or_arr and not _is_number(idx): _set_err_runtime(stack, it[pos], "Index access must be a number")
+					elif is_str_or_arr and (idx >= len(obj) or idx < -len(obj)): _set_err_runtime(stack, it[pos], "Index access out of bounds")
 					elif not it[pos][2] and obj is Dictionary and idx not in obj: _set_err_runtime(stack, it[pos], "Dictionary index access needs existing key")
-					elif it[pos][2] and _is_container(obj): stack.push_back(idx); stack.push_back(obj) # is left side
+					elif it[pos][2] and is_container: stack.push_back(idx); stack.push_back(obj) # is left side
 					elif it[pos][2]: _set_err_runtime(stack, it[pos], "Can't use String index access on left side")
 					else: stack.push_back(obj[idx])
 				else: _set_err_runtime(stack, it[pos], "Invalid index access")
 			Instruction.ITERATE:
 				var obj = stack.pop_back()
-				if not _is_iterable(obj):
-					_set_err_runtime(stack, it[pos], "Iteration possible only over arrays, dictionaries or strings")
+				if obj == null or obj is Undefined:
+					env.erase(it[pos][2])
+					stack.push_back(Undefined.new(line))
+				elif not _is_iterable(obj):
+					_set_err_runtime(stack, it[pos], "Iteration possible only over numbers, arrays, dictionaries or strings")
 				else:
 					var iter = env.get(it[pos][2], 0)
-					if iter is not Iterator or typeof(iter.container) != typeof(obj) or iter.container != obj:
-						iter = Iterator.new(obj)
-						env.set(it[pos][2], iter)
+					if iter is not Iterator or typeof(iter.target) != typeof(obj) or iter.target != obj:
+						if _is_number(obj): iter = NumberIterator.new(obj)
+						else: iter = StringOrContainerIterator.new(obj)
+						env[it[pos][2]] = iter
 					var res: bool = iter.iterate()
-					if not res: env.set(it[pos][2], Undefined.new(line))
+					if not res: env.erase(it[pos][2])
 					stack.push_back(res)
 		pos += 1
 		step += 1
@@ -417,7 +423,7 @@ func _is_number(v) -> bool:
 	return v is int or v is float
 
 func _is_iterable(v) -> bool:
-	return v is Array or v is Dictionary or v is String or v is StringName
+	return v is int or v is float or v is Array or v is Dictionary or v is String or v is StringName
 
 func _is_str_or_arr(v) -> bool:
 	return v is Array or v is String or v is StringName
@@ -511,17 +517,29 @@ class KeyValuePairProxy extends Proxy:
 	func _proxy_value(): return value
 
 class Iterator:
-	var container
-	var container_to_iterate
+	var target
 	var cur_idx := -1
-	func _init(c) -> void: container = c; container_to_iterate = c.keys() if c is Dictionary else c
+	func _init(t) -> void: target = t
 	func _to_string() -> String: return str(get_cur_value())
+	func iterate() -> bool: return false
+	func get_cur_value(): return null
+
+class NumberIterator extends Iterator:
 	func iterate() -> bool:
 		cur_idx += 1
-		return cur_idx < len(container_to_iterate)
+		return cur_idx < target
 	func get_cur_value():
-		if not container_to_iterate or cur_idx < 0 or cur_idx >= len(container_to_iterate): return null
-		return container_to_iterate[cur_idx]
+		return cur_idx
+
+class StringOrContainerIterator extends Iterator:
+	var iter_target
+	func _init(t) -> void: super(t); iter_target = t.keys() if t is Dictionary else t
+	func iterate() -> bool:
+		cur_idx += 1
+		return cur_idx < len(iter_target)
+	func get_cur_value():
+		if not iter_target or cur_idx < 0 or cur_idx >= len(iter_target): return null
+		return iter_target[cur_idx]
 
 ### LEXER
 

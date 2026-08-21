@@ -80,10 +80,12 @@ In order to iterate over an array or a dictionary you can use `from`:
 d = dictionary("name": "Klapauzius", "age": 10000, "weight": 123.4)
 while key from d do
 	print("Key: " + key + " ... Value: " + d[key])
-	// not allowed: key = <value>
-	// not recommended: d.erase(key)
+	// -- not allowed: key = <value>
+	// -- not recommended: d.erase(key)
 end
 ```
+
+`from` also works with numbers. Be aware that the right side expression of `from` is evaluated on every iteration, which leads to unexpected behaviour when the expression's result changes. To clear an iterator and make it assignable again, call `i from undefined`.
 
 ## History
 
