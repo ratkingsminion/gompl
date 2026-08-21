@@ -181,18 +181,22 @@ func _ready() -> void:
 	
 	# test iterating
 	res = g.eval('
-		while value from array(5, 6, 7, 8, 9) do
-			print(value + " + 1 = " + (value + 1))
-			if value == 7 then stop end
+		sum = 0
+		while i of 101 do
+			sum = sum + i
 		end
+		print("sum of 1 to 100: " + sum)
 		
-		// from works outside of while loops too
-		print((s from "STR") + " -> " + s)
-		print((s from "STR") + " -> " + s)
-		print((s from "STR") + " -> " + s)
-		print((s from "STR") + " -> " + s)
+		// "of" works outside of while loops too
+		print((s of "STR") + " -> " + s) // S
+		print((s of "STR") + " -> " + s) // T
+		print((s of "STR") + " -> " + s) // R
+		print((s of "STR") + " -> " + s) // undefined
 		
-		value
+		while value of array(3, 5, 7, 9, 11) do
+			print(value + " * 2 = " + (value * 2))
+			if value == 7 then stop with value end
+		end
 	')
 	print("RESULT 13 (iterating): ", res, "\n")
 	assert((res is int or res is float) and res == 7, "Result 13 wrong")

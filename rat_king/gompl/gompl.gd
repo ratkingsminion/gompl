@@ -37,11 +37,11 @@ const _TOKEN_UNARY: Array[String] = [ "not", "-" ]
 const _TOKEN_ASSIGNMENT: Array[String] = [ "=" ]
 const _TOKEN_PAIR: Array[String] = [ ":" ]
 const _TOKEN_ACCESS: Array[String] = [ "." ]
-const _TOKEN_ITERATE: Array[String] = [ "from" ]
+const _TOKEN_ITERATE: Array[String] = [ "of" ]
 const _TOKEN_BINARY_OPERATOR: Array[String] = [ "+", "-", "*", "/", "%" ]
 const _TOKEN_BINARY_OPERATOR_ALLOWING_UNDEFINED: Array[String] = [ "+", "%" ]
 const _TOKEN_FLOW_CONTROL: Array[String] = [ "stop", "skip", "interrupt" ]
-const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "from",
+const _TOKEN_KEYWORDS: Array[String] = [ "and", "or", "not", "if", "then", "else", "elif", "while", "of",
 	"do", "end", "stop", "skip", "interrupt", "with", "function", "array", "dictionary" ]
 const _TOKEN_UNDEFINED: Array[String] = [ "undefined" ]
 const _TOKEN_BOOLS: Array[String] = [ "true", "false" ]
@@ -331,9 +331,10 @@ func run(it: Array[Array], env = null, state = null, max_steps := -1) -> Variant
 					_set_err_runtime(stack, it[pos], "Iteration possible only over numbers, arrays, dictionaries or strings")
 				else:
 					var iter = env.get(it[pos][2], 0)
-					if iter is not Iterator or typeof(iter.target) != typeof(obj) or iter.target != obj:
+					if iter is not Iterator or not iter.update_target(obj):
 						if _is_number(obj): iter = NumberIterator.new(obj)
-						else: iter = StringOrContainerIterator.new(obj)
+						elif _is_string(obj): iter = StringIterator.new(obj)
+						else: iter = ContainerIterator.new(obj)
 						env[it[pos][2]] = iter
 					var res: bool = iter.iterate()
 					if not res: env.erase(it[pos][2])
@@ -523,6 +524,7 @@ class Iterator:
 	func _to_string() -> String: return str(get_cur_value())
 	func iterate() -> bool: return false
 	func get_cur_value(): return null
+	func update_target(other) -> bool: return typeof(target) == typeof(other)
 
 class NumberIterator extends Iterator:
 	func iterate() -> bool:
@@ -530,8 +532,24 @@ class NumberIterator extends Iterator:
 		return cur_idx < target
 	func get_cur_value():
 		return cur_idx
+	func update_target(other) -> bool:
+		if not other is int and not other is float: return false
+		target = other
+		return true
 
-class StringOrContainerIterator extends Iterator:
+class StringIterator extends Iterator:
+	func iterate() -> bool:
+		cur_idx += 1
+		return cur_idx < len(target)
+	func get_cur_value():
+		if not target or cur_idx < 0 or cur_idx >= len(target): return null
+		return target[cur_idx]
+	func update_target(other) -> bool:
+		if not other is String and not other is StringName: return false
+		target = other
+		return true
+
+class ContainerIterator extends Iterator:
 	var iter_target
 	func _init(t) -> void: super(t); iter_target = t.keys() if t is Dictionary else t
 	func iterate() -> bool:
@@ -540,6 +558,8 @@ class StringOrContainerIterator extends Iterator:
 	func get_cur_value():
 		if not iter_target or cur_idx < 0 or cur_idx >= len(iter_target): return null
 		return iter_target[cur_idx]
+	func update_target(other) -> bool:
+		return super(other) and (target == other)
 
 ### LEXER
 
@@ -947,11 +967,11 @@ class Parser:
 	func iterate() -> Expr:
 		var expr := accessor()
 		while pos < tokens.size() and tokens[pos][1] == _RESERVED and tokens[pos][0] in _TOKEN_ITERATE:
-			if expr is not Expr.Identifier: _set_err("Iterate 'from' expects identifier on left side"); return null
+			if expr is not Expr.Identifier: _set_err("Keyword 'of' expects identifier on left side"); return null
 			var ln: int = tokens[pos][2]
 			pos += 1
 			var right := expression()
-			if not right: _set_err("Iterate 'from' expects expression on right side"); return null
+			if not right: _set_err("Keyword 'of' expects expression on right side"); return null
 			return Expr.Iterate.new(ln, expr, right)
 		return expr
 	

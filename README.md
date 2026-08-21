@@ -50,7 +50,7 @@ func _ready() -> void:
 * function
 * array
 * dictionary
-* from
+* of
 
 ## Notes
 
@@ -74,18 +74,18 @@ Arrays are always untyped and initialised like this: `a = array(1, 2, 3)`, array
 
 Dictionaries are also supported: `d = dictionary("a": 1, "b": 2, "c": 3)`. The same rules as to arrays apply, and no method regarding types are supported. `set(entry)` returns the dictionary itself instead of true/false like in Godot; `entry` can be a key-value pair (`"foo": 5`), or anything else, which then creates the key with undefined value. This also works during `dictionary()` initialisation.
 
-In order to iterate over an array or a dictionary you can use `from`:
+In order to iterate over an array or a dictionary you can use `of`:
 
 ```Lua
 d = dictionary("name": "Klapauzius", "age": 10000, "weight": 123.4)
-while key from d do
+while key of d do
 	print("Key: " + key + " ... Value: " + d[key])
 	// -- not allowed: key = <value>
 	// -- not recommended: d.erase(key)
 end
 ```
 
-`from` also works with numbers. Be aware that the right side expression of `from` is evaluated on every iteration, which leads to unexpected behaviour when the expression's result changes. To clear an iterator and make it assignable again, call `i from undefined`.
+`of` also works with numbers and string. Be aware that the right side expression of `of` is evaluated on every iteration, which might lead to unexpected behaviour when the expression's result changes. To clear an iterator variable and make it assignable again, call `<iter> of undefined`.
 
 ## History
 
