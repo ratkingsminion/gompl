@@ -2,6 +2,8 @@
 
 A simple scripting language written in GDScript with focus on safe usage (no Godot errors) for embedding. Used in [I Made A Game For You](https://medienzentrale.itch.io/a-game-for-you) and [Mops & Mobs](https://store.steampowered.com/app/2851050/).
 
+**>>> NOTICE: This repo moved [to Codeberg](https://codeberg.org/ratrogue/slang.gd) <<<**
+
 ---
 
 ## Example (GDScript with embedded Gompl code)
